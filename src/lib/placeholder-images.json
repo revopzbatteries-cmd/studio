@@ -1,3 +1,34 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-product",
+      "description": "Premium lithium inverter unit",
+      "imageUrl": "https://picsum.photos/seed/revopz-hero/800/600",
+      "imageHint": "lithium inverter"
+    },
+    {
+      "id": "inverter-1kva",
+      "description": "REVOPZ 1kVA Lithium Inverter",
+      "imageUrl": "https://picsum.photos/seed/revopz-1kva/600/400",
+      "imageHint": "power inverter"
+    },
+    {
+      "id": "inverter-3kva",
+      "description": "REVOPZ 3kVA Lithium Inverter",
+      "imageUrl": "https://picsum.photos/seed/revopz-3kva/600/400",
+      "imageHint": "energy system"
+    },
+    {
+      "id": "battery-12v",
+      "description": "REVOPZ 12V Lithium Battery Pack",
+      "imageUrl": "https://picsum.photos/seed/revopz-batt/600/400",
+      "imageHint": "lithium battery"
+    },
+    {
+      "id": "ceo-portrait",
+      "description": "Amal Raj T P, CEO of REVOPZ",
+      "imageUrl": "https://picsum.photos/seed/revopz-ceo/300/300",
+      "imageHint": "executive portrait"
+    }
+  ]
 }

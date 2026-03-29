@@ -1,5 +1,18 @@
-# Firebase Studio
+# REVOPZ Energy Systems
 
-This is a NextJS starter in Firebase Studio.
+Premium manufacturer of lithium-ion inverters and batteries.
 
-To get started, take a look at src/app/page.tsx.
+## Features
+- Complete Product Catalog
+- Technical Details Simplification (AI Powered)
+- Multi-channel Enquiry System (WhatsApp, Phone, Email)
+- Dealer & General Support
+- Responsive & Accessible Design
+
+## Tech Stack
+- Next.js 15 (App Router)
+- TailwindCSS
+- Framer Motion
+- GenAI (Genkit)
+- Lucide Icons
+- Shadcn UI
