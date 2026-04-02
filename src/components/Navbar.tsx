@@ -12,7 +12,6 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 const NAV_LINKS = [
   { name: 'Products', href: '/products' },
-  { name: 'Technology', href: '/#technology' },
   { name: 'About', href: '/about' },
   { name: 'Contact', href: '/contact' },
   { name: 'Warranty', href: '/warranty' },
