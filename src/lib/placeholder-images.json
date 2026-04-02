@@ -1,6 +1,12 @@
 {
   "placeholderImages": [
     {
+      "id": "company-logo",
+      "description": "REVOPZ Official Logo Icon",
+      "imageUrl": "https://picsum.photos/seed/revopz-logo/128/128",
+      "imageHint": "energy logo"
+    },
+    {
       "id": "hero-product",
       "description": "Premium lithium inverter unit",
       "imageUrl": "https://picsum.photos/seed/revopz-hero/800/600",

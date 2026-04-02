@@ -1,11 +1,14 @@
+
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Zap } from 'lucide-react';
 import { useState } from 'react';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 const NAV_LINKS = [
   { name: 'Products', href: '/products' },
@@ -18,40 +21,60 @@ const NAV_LINKS = [
 export function Navbar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  
+  const logoImage = PlaceHolderImages.find(img => img.id === 'company-logo');
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center space-x-2">
-            <span className="font-headline text-2xl font-bold tracking-tighter text-primary">
+          {/* Logo Section */}
+          <Link href="/" className="flex items-center gap-3 group transition-opacity hover:opacity-90 shrink-0">
+            <div className="relative h-8 w-8 md:h-10 md:w-10 overflow-hidden rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 group-hover:border-primary/50 transition-colors shadow-[0_0_15px_rgba(var(--primary),0.1)]">
+              {logoImage ? (
+                <Image 
+                  src={logoImage.imageUrl}
+                  alt="REVOPZ Logo"
+                  width={40}
+                  height={40}
+                  className="object-contain p-1"
+                  priority
+                />
+              ) : (
+                <Zap className="text-primary w-5 h-5 md:w-6 md:h-6" />
+              )}
+            </div>
+            <span className="font-headline text-xl md:text-2xl font-bold tracking-tighter text-foreground group-hover:text-primary transition-colors">
               REVOPZ
             </span>
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center space-x-8">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.name}
-                href={link.href}
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  pathname === link.href ? "text-primary" : "text-muted-foreground"
-                )}
-              >
-                {link.name}
-              </Link>
-            ))}
-            <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
+          <div className="hidden md:flex items-center space-x-1 lg:space-x-4">
+            <div className="flex items-center space-x-6 lg:space-x-8 mr-4 lg:mr-8">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className={cn(
+                    "text-sm font-medium transition-colors hover:text-primary whitespace-nowrap",
+                    pathname === link.href ? "text-primary" : "text-muted-foreground"
+                  )}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </div>
+            <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10 px-6">
               <Link href="/contact">Enquire Now</Link>
             </Button>
           </div>
 
           {/* Mobile Menu Toggle */}
           <button
-            className="md:hidden text-foreground p-2"
+            className="md:hidden text-foreground p-2 ml-4"
             onClick={() => setIsOpen(!isOpen)}
+            aria-label="Toggle Menu"
           >
             {isOpen ? <X /> : <Menu />}
           </button>
@@ -65,13 +88,16 @@ export function Navbar() {
             <Link
               key={link.name}
               href={link.href}
-              className="block text-lg font-medium text-foreground py-2"
+              className={cn(
+                "block text-lg font-medium py-2",
+                pathname === link.href ? "text-primary" : "text-foreground"
+              )}
               onClick={() => setIsOpen(false)}
             >
               {link.name}
             </Link>
           ))}
-          <Button asChild className="w-full bg-accent hover:bg-accent/90">
+          <Button asChild className="w-full bg-accent hover:bg-accent/90 mt-4">
             <Link href="/contact" onClick={() => setIsOpen(false)}>Enquire Now</Link>
           </Button>
         </div>
