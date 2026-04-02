@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Phone, Mail, MapPin, MessageCircle, Loader2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/tabs';
+import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ContactPage() {
@@ -26,10 +26,12 @@ export default function ContactPage() {
     }, 1500);
   };
 
+  const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
+
   return (
     <div className="w-full py-16 lg:py-24">
       <div className="container mx-auto px-4 md:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-16 mb-24">
           {/* Contact Info */}
           <div className="lg:col-span-1 space-y-12">
             <div className="space-y-4">
@@ -59,8 +61,8 @@ export default function ContactPage() {
               <ContactItem 
                 icon={<MapPin className="text-primary" />}
                 title="Location"
-                value="Cochin, Kerala, India"
-                href="#"
+                value="Koottanad Road, Padinjarangadi, Near HP Petrol Pump, Pattambi, Palakkad, Kerala, India"
+                href={googleMapsUrl}
               />
             </div>
           </div>
@@ -137,6 +139,35 @@ export default function ContactPage() {
             </Tabs>
           </div>
         </div>
+
+        {/* Location Section */}
+        <section className="space-y-12">
+          <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+            <div className="space-y-4">
+              <h2 className="text-3xl font-bold font-headline">Our Location</h2>
+              <div className="flex items-start gap-2 text-muted-foreground text-lg max-w-[600px]">
+                <MapPin className="shrink-0 mt-1 text-primary" size={24} />
+                <p>Koottanad Road, Padinjarangadi, Near HP Petrol Pump, Pattambi, Palakkad, Kerala, India</p>
+              </div>
+            </div>
+            <Button asChild variant="outline" size="lg" className="h-14 px-8 border-primary text-primary hover:bg-primary/10">
+              <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                Open in Google Maps <ExternalLink size={18} />
+              </a>
+            </Button>
+          </div>
+
+          <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-3xl overflow-hidden border border-border shadow-2xl relative">
+            <iframe 
+              src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m12!1m3!1d15671.196929944358!2d76.070464!3d10.781742!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTDCsDQ2JzU0LjMiTiA3NiswNCcwMS43IkU!5e0!3m2!1sen!2sin!4v1711111111111!5m2!1sen!2sin" 
+              className="absolute inset-0 w-full h-full grayscale opacity-80 contrast-125"
+              style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg) brightness(0.9)' }}
+              allowFullScreen={true} 
+              loading="lazy" 
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -144,7 +175,7 @@ export default function ContactPage() {
 
 function ContactItem({ icon, title, value, href }: { icon: React.ReactNode, title: string, value: string, href: string }) {
   return (
-    <a href={href} className="flex items-start gap-4 group">
+    <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel={href.startsWith('http') ? 'noopener noreferrer' : undefined} className="flex items-start gap-4 group">
       <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
         {icon}
       </div>

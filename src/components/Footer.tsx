@@ -3,6 +3,8 @@ import { Instagram, MessageCircle, Phone, Mail, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function Footer() {
+  const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
+
   return (
     <footer className="bg-muted pt-16 pb-8 border-t">
       <div className="container mx-auto px-4 md:px-6">
@@ -51,7 +53,14 @@ export function Footer() {
               </li>
               <li className="flex items-start space-x-3">
                 <MapPin size={16} className="text-primary mt-1" />
-                <span>Industrial Area, Cochin, Kerala, India</span>
+                <a 
+                  href={googleMapsUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-primary transition-colors"
+                >
+                  Padinjarangadi, Pattambi, Palakkad, Kerala
+                </a>
               </li>
             </ul>
           </div>
