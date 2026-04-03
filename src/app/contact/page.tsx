@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink, Instagram } from 'lucide-react';
+import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink, Instagram, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ContactPage() {
@@ -40,7 +40,7 @@ export default function ContactPage() {
               <p className="text-muted-foreground">Have questions about our products or partnership opportunities? We're here to help.</p>
             </div>
 
-            <div className="space-y-8">
+            <div className="space-y-6">
               <ContactItem 
                 icon={<Phone className="text-primary" />}
                 title="Phone"
@@ -52,6 +52,27 @@ export default function ContactPage() {
                 title="WhatsApp"
                 value="+91 97468 04951"
                 href="https://wa.me/919746804951"
+              />
+              <ContactItem 
+                icon={<Linkedin className="text-primary" />}
+                title="LinkedIn"
+                value="Follow us on LinkedIn"
+                href="#"
+                onClick={(e) => e.preventDefault()}
+              />
+              <ContactItem 
+                icon={<Twitter className="text-primary" />}
+                title="X (Twitter)"
+                value="Follow us on X"
+                href="#"
+                onClick={(e) => e.preventDefault()}
+              />
+              <ContactItem 
+                icon={<Facebook className="text-primary" />}
+                title="Facebook"
+                value="Follow us on Facebook"
+                href="#"
+                onClick={(e) => e.preventDefault()}
               />
               <ContactItem 
                 icon={<Instagram className="text-primary" />}
@@ -180,13 +201,14 @@ export default function ContactPage() {
   );
 }
 
-function ContactItem({ icon, title, value, href }: { icon: React.ReactNode, title: string, value: string, href: string }) {
+function ContactItem({ icon, title, value, href, onClick }: { icon: React.ReactNode, title: string, value: string, href: string, onClick?: (e: React.MouseEvent) => void }) {
   const isExternal = href.startsWith('http');
   return (
     <a 
       href={href} 
       target={isExternal ? '_blank' : undefined} 
       rel={isExternal ? 'noopener noreferrer' : undefined} 
+      onClick={onClick}
       className="flex items-start gap-4 group"
       title={isExternal ? `Visit our ${title}` : `Contact us via ${title}`}
     >

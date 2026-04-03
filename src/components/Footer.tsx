@@ -1,5 +1,7 @@
+"use client";
+
 import Link from 'next/link';
-import { Instagram, MessageCircle, Phone, Mail, MapPin } from 'lucide-react';
+import { Instagram, MessageCircle, Phone, Mail, MapPin, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function Footer() {
@@ -19,15 +21,30 @@ export function Footer() {
               Leading manufacturer of high-efficiency lithium-ion inverters and batteries. 
               Powering homes and businesses with reliable energy systems.
             </p>
-            <div className="flex space-x-4">
+            <div className="flex space-x-1">
               <Link 
-                href="https://wa.me/919746804951" 
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Chat on WhatsApp"
+                href="#" 
+                title="LinkedIn"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+                onClick={(e) => e.preventDefault()}
               >
-                <MessageCircle size={20} />
+                <Linkedin size={20} />
+              </Link>
+              <Link 
+                href="#" 
+                title="X (Twitter)"
+                className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+                onClick={(e) => e.preventDefault()}
+              >
+                <Twitter size={20} />
+              </Link>
+              <Link 
+                href="#" 
+                title="Facebook"
+                className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+                onClick={(e) => e.preventDefault()}
+              >
+                <Facebook size={20} />
               </Link>
               <Link 
                 href={instagramUrl}
@@ -37,6 +54,15 @@ export function Footer() {
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
               >
                 <Instagram size={20} />
+              </Link>
+              <Link 
+                href="https://wa.me/919746804951" 
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Chat on WhatsApp"
+                className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+              >
+                <MessageCircle size={20} />
               </Link>
             </div>
           </div>
