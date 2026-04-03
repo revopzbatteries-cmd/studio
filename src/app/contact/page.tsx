@@ -157,11 +157,11 @@ export default function ContactPage() {
             </Button>
           </div>
 
-          <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-3xl overflow-hidden border border-border shadow-2xl relative">
+          <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-3xl overflow-hidden border border-border shadow-2xl relative bg-muted/20">
             <iframe 
-              src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m12!1m3!1d15671.196929944358!2d76.070464!3d10.781742!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTDCsDQ2JzU0LjMiTiA3NiswNCcwMS43IkU!5e0!3m2!1sen!2sin!4v1711111111111!5m2!1sen!2sin" 
-              className="absolute inset-0 w-full h-full grayscale opacity-80 contrast-125"
-              style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg) brightness(0.9)' }}
+              src="https://maps.google.com/maps?q=10.781742,76.070464&z=15&output=embed" 
+              className="absolute inset-0 w-full h-full grayscale contrast-125 opacity-90"
+              style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg) brightness(0.85) contrast(1.1)' }}
               allowFullScreen={true} 
               loading="lazy" 
               referrerPolicy="no-referrer-when-downgrade"
