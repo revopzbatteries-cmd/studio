@@ -23,13 +23,15 @@ import {
   Briefcase,
   FileText,
   Search,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { PRODUCTS as initialProducts, Product } from '@/lib/products';
 import { Job, INITIAL_JOBS, JobType } from '@/lib/jobs';
 import { JobApplication, INITIAL_APPLICATIONS, ApplicationStatus } from '@/lib/applications';
+import { WarrantyEntry, INITIAL_WARRANTIES, WarrantyStatus } from '@/lib/warranty';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,16 +43,6 @@ type AdminUser = {
   name: string;
   email: string;
   role: 'Main Admin' | 'Sub Admin';
-};
-
-type WarrantyEntry = {
-  id: string;
-  productName: string;
-  serialNumber: string;
-  customerName: string;
-  purchaseDate: string;
-  warrantyPeriod: string;
-  status: 'Active' | 'Claimed';
 };
 
 export default function AdminPage() {
@@ -67,26 +59,7 @@ export default function AdminPage() {
     { id: '1', name: 'Amal Raj T P', email: 'amal@revopz.com', role: 'Main Admin' }
   ]);
   const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [warranties, setWarranties] = useState<WarrantyEntry[]>([
-    { 
-      id: 'w1', 
-      productName: 'Lithium Inverter 1kVA', 
-      serialNumber: 'RV-1K-001', 
-      customerName: 'Suresh Kumar', 
-      purchaseDate: '2023-10-15', 
-      warrantyPeriod: '24 Months', 
-      status: 'Active' 
-    },
-    { 
-      id: 'w2', 
-      productName: 'Lithium Battery 12V', 
-      serialNumber: 'RV-B12-552', 
-      customerName: 'Anjali Menon', 
-      purchaseDate: '2023-05-20', 
-      warrantyPeriod: '60 Months', 
-      status: 'Claimed' 
-    }
-  ]);
+  const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
 
@@ -95,6 +68,7 @@ export default function AdminPage() {
     const auth = localStorage.getItem('revopz_admin_auth');
     if (auth === 'true') setIsLoggedIn(true);
 
+    // Sync Jobs
     const savedJobs = localStorage.getItem('revopz_jobs');
     if (savedJobs) {
       setJobs(JSON.parse(savedJobs));
@@ -103,12 +77,22 @@ export default function AdminPage() {
       localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS));
     }
 
+    // Sync Applications
     const savedApps = localStorage.getItem('revopz_applications');
     if (savedApps) {
       setApplications(JSON.parse(savedApps));
     } else {
       setApplications(INITIAL_APPLICATIONS);
       localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS));
+    }
+
+    // Sync Warranties
+    const savedWarranties = localStorage.getItem('revopz_warranties');
+    if (savedWarranties) {
+      setWarranties(JSON.parse(savedWarranties));
+    } else {
+      setWarranties(INITIAL_WARRANTIES);
+      localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES));
     }
   }, []);
 
@@ -120,6 +104,11 @@ export default function AdminPage() {
   const handleUpdateApps = (newApps: JobApplication[]) => {
     setApplications(newApps);
     localStorage.setItem('revopz_applications', JSON.stringify(newApps));
+  };
+
+  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => {
+    setWarranties(newWarranties);
+    localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties));
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -264,7 +253,7 @@ export default function AdminPage() {
           <div className="grid gap-6">
             {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} />}
             {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} />}
-            {activeTab === 'warranty' && <WarrantySection products={products} warranties={warranties} setWarranties={setWarranties} />}
+            {activeTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} />}
             {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} />}
             {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} />}
           </div>
@@ -644,49 +633,69 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
   );
 }
 
-function WarrantySection({ products, warranties, setWarranties }: { products: Product[], warranties: WarrantyEntry[], setWarranties: React.Dispatch<React.SetStateAction<WarrantyEntry[]>> }) {
+function WarrantyManagementSection({ warranties, setWarranties, products }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[] }) {
   const { toast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [newEntry, setNewEntry] = useState<Partial<WarrantyEntry>>({
-    productName: '',
+  const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
+  
+  const [formData, setFormData] = useState<Partial<WarrantyEntry>>({
     serialNumber: '',
+    productName: '',
     customerName: '',
-    purchaseDate: '',
-    warrantyPeriod: '24 Months'
+    phone: '',
+    email: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
+    expiryDate: '',
+    status: 'Active'
   });
 
-  useEffect(() => {
-    setNewEntry(prev => ({
-      ...prev,
-      purchaseDate: new Date().toISOString().split('T')[0]
-    }));
-  }, []);
-
   const handleAddWarranty = () => {
-    if (!newEntry.serialNumber || !newEntry.customerName) return;
+    if (!formData.serialNumber || !formData.customerName) return;
+
+    // Auto-calculate expiry (default 24 months)
+    const purchaseDate = new Date(formData.purchaseDate || '');
+    const expiryDate = new Date(purchaseDate);
+    expiryDate.setFullYear(purchaseDate.getFullYear() + 2);
+
     const entry: WarrantyEntry = {
       id: Math.random().toString(36).substr(2, 9),
-      productName: newEntry.productName || 'General Product',
-      serialNumber: newEntry.serialNumber || '',
-      customerName: newEntry.customerName || '',
-      purchaseDate: newEntry.purchaseDate || '',
-      warrantyPeriod: newEntry.warrantyPeriod || '24 Months',
-      status: 'Active'
+      serialNumber: formData.serialNumber!.toUpperCase(),
+      productName: formData.productName || 'General Product',
+      customerName: formData.customerName!,
+      phone: formData.phone || '',
+      email: formData.email || '',
+      purchaseDate: formData.purchaseDate || '',
+      expiryDate: expiryDate.toISOString().split('T')[0],
+      status: (formData.status as WarrantyStatus) || 'Active'
     };
+
     setWarranties([entry, ...warranties]);
     setIsAddOpen(false);
+    setFormData({ purchaseDate: new Date().toISOString().split('T')[0] });
     toast({ title: "Warranty Registered", description: `Serial ${entry.serialNumber} is now active.` });
   };
 
-  const toggleStatus = (id: string) => {
-    setWarranties(warranties.map(w => {
-      if (w.id === id) {
-        const newStatus = w.status === 'Active' ? 'Claimed' : 'Active';
-        toast({ title: "Status Updated", description: `Warranty is now ${newStatus}.` });
-        return { ...w, status: newStatus as any };
-      }
-      return w;
-    }));
+  const handleUpdateStatus = (id: string, newStatus: WarrantyStatus) => {
+    const updated = warranties.map(w => w.id === id ? { ...w, status: newStatus } : w);
+    setWarranties(updated);
+    toast({ title: "Status Updated", description: `Warranty status changed to ${newStatus}.` });
+  };
+
+  const handleDelete = (id: string) => {
+    const updated = warranties.filter(w => w.id !== id);
+    setWarranties(updated);
+    toast({ title: "Warranty Deleted", description: "Record removed from registry." });
+  };
+
+  const getStatusBadge = (status: WarrantyStatus) => {
+    switch (status) {
+      case 'Active': return <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>;
+      case 'Expired': return <Badge variant="secondary">Expired</Badge>;
+      case 'Claim Requested': return <Badge className="bg-orange-500 hover:bg-orange-600">Claim Requested</Badge>;
+      case 'Claim Approved': return <Badge className="bg-blue-600 hover:bg-blue-700">Claim Approved</Badge>;
+      case 'Claim Rejected': return <Badge variant="destructive">Claim Rejected</Badge>;
+      default: return <Badge>{status}</Badge>;
+    }
   };
 
   return (
@@ -694,7 +703,7 @@ function WarrantySection({ products, warranties, setWarranties }: { products: Pr
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-lg">Warranty Registry</CardTitle>
-          <CardDescription>Track claims and registered serial numbers.</CardDescription>
+          <CardDescription>Manage product serials and customer claims.</CardDescription>
         </div>
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
@@ -706,40 +715,38 @@ function WarrantySection({ products, warranties, setWarranties }: { products: Pr
               <DialogDescription>Link a product serial to a customer.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label>Product</Label>
-                <Select onValueChange={(v) => setNewEntry({...newEntry, productName: v})}>
-                  <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {products.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Serial Number</Label>
-                <Input value={newEntry.serialNumber} onChange={(e) => setNewEntry({...newEntry, serialNumber: e.target.value})} placeholder="e.g. RV-2024-X99" />
-              </div>
-              <div className="space-y-2">
-                <Label>Customer Name</Label>
-                <Input value={newEntry.customerName} onChange={(e) => setNewEntry({...newEntry, customerName: e.target.value})} placeholder="Enter customer name" />
-              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Purchase Date</Label>
-                  <Input type="date" value={newEntry.purchaseDate} onChange={(e) => setNewEntry({...newEntry, purchaseDate: e.target.value})} />
+                  <Label>Serial Number</Label>
+                  <Input value={formData.serialNumber} onChange={(e) => setFormData({...formData, serialNumber: e.target.value})} placeholder="RV-1K-001" className="uppercase" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Warranty Period</Label>
-                  <Select value={newEntry.warrantyPeriod} onValueChange={(v) => setNewEntry({...newEntry, warrantyPeriod: v})}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>Product</Label>
+                  <Select onValueChange={(v) => setFormData({...formData, productName: v})}>
+                    <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
                     <SelectContent className="bg-popover">
-                      <SelectItem value="12 Months">12 Months</SelectItem>
-                      <SelectItem value="24 Months">24 Months</SelectItem>
-                      <SelectItem value="36 Months">36 Months</SelectItem>
-                      <SelectItem value="60 Months">60 Months</SelectItem>
+                      {products.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Customer Name</Label>
+                <Input value={formData.customerName} onChange={(e) => setFormData({...formData, customerName: e.target.value})} placeholder="John Doe" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="+91..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="john@example.com" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Purchase Date</Label>
+                <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})} />
               </div>
             </div>
             <DialogFooter>
@@ -756,24 +763,91 @@ function WarrantySection({ products, warranties, setWarranties }: { products: Pr
               <TableHead>Customer</TableHead>
               <TableHead>Product</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {warranties.map((w) => (
-              <TableRow key={w.id}>
+              <TableRow key={w.id} className={w.status === 'Claim Requested' ? 'bg-orange-500/5' : ''}>
                 <TableCell className="font-mono font-bold text-primary">{w.serialNumber}</TableCell>
-                <TableCell>{w.customerName}</TableCell>
-                <TableCell className="text-muted-foreground">{w.productName}</TableCell>
                 <TableCell>
-                  <Badge variant={w.status === 'Active' ? 'default' : 'destructive'} className={w.status === 'Active' ? 'bg-green-600' : ''}>
-                    {w.status}
-                  </Badge>
+                  <div className="flex flex-col">
+                    <span>{w.customerName}</span>
+                    <span className="text-xs text-muted-foreground">{w.phone}</span>
+                  </div>
                 </TableCell>
+                <TableCell className="text-muted-foreground text-xs">{w.productName}</TableCell>
+                <TableCell>{getStatusBadge(w.status)}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="outline" size="sm" onClick={() => toggleStatus(w.id)}>
-                    {w.status === 'Active' ? 'Mark Claimed' : 'Activate'}
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => setSelectedWarranty(w)}><Eye size={16} /></Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-card">
+                        <DialogHeader>
+                          <DialogTitle>Warranty Details</DialogTitle>
+                          <DialogDescription>Full record for Serial: {selectedWarranty?.serialNumber}</DialogDescription>
+                        </DialogHeader>
+                        {selectedWarranty && (
+                          <div className="space-y-6 py-4">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
+                                <p className="font-bold">{selectedWarranty.customerName}</p>
+                                <p>{selectedWarranty.phone}</p>
+                                <p className="text-xs">{selectedWarranty.email}</p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground uppercase">Dates</Label>
+                                <p>Purchased: {selectedWarranty.purchaseDate}</p>
+                                <p className="font-bold text-primary">Expires: {selectedWarranty.expiryDate}</p>
+                              </div>
+                            </div>
+                            
+                            {selectedWarranty.claimMessage && (
+                              <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20 space-y-2">
+                                <Label className="text-xs text-orange-500 font-bold uppercase flex items-center gap-2">
+                                  <AlertTriangle size={14} /> Claim Issue Description
+                                </Label>
+                                <p className="text-sm italic">"{selectedWarranty.claimMessage}"</p>
+                              </div>
+                            )}
+
+                            <div className="space-y-2">
+                              <Label>Update Status</Label>
+                              <Select defaultValue={selectedWarranty.status} onValueChange={(v: WarrantyStatus) => handleUpdateStatus(selectedWarranty.id, v)}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent className="bg-popover">
+                                  <SelectItem value="Active">Active</SelectItem>
+                                  <SelectItem value="Claim Requested">Claim Requested</SelectItem>
+                                  <SelectItem value="Claim Approved">Claim Approved</SelectItem>
+                                  <SelectItem value="Claim Rejected">Claim Rejected</SelectItem>
+                                  <SelectItem value="Expired">Expired</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                    
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-card">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Warranty?</AlertDialogTitle>
+                          <AlertDialogDescription>Remove serial {w.serialNumber} from the registry.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(w.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -1126,5 +1200,21 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function SidebarButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+        active 
+          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
