@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -82,66 +83,56 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Why Revopz */}
-      <section className="py-24 bg-muted">
+      {/* Brand Identity: Why REVOPZ */}
+      <section className="py-24 bg-muted/30">
         <div className="container mx-auto px-4 md:px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="space-y-8">
-              <h2 className="text-3xl md:text-4xl font-bold font-headline">Why Choose REVOPZ?</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <h2 className="text-4xl md:text-5xl font-bold font-headline">Why REVOPZ</h2>
+                <p className="text-xl text-muted-foreground leading-relaxed max-w-[600px]">
+                  REVOPZ is a manufacturer of lithium-ion inverters and batteries focused on reliability, efficiency, and long-term performance. We bridge the gap between complex energy technology and everyday reliability.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-10">
                 <Benefit 
-                  icon={<Zap className="text-accent" />}
-                  title="High Efficiency"
-                  text="Up to 98% conversion efficiency for minimal power loss."
+                  icon={<Zap size={32} />}
+                  title="High Efficiency Technology"
+                  text="Optimized energy conversion for maximum power savings."
                 />
                 <Benefit 
-                  icon={<ShieldCheck className="text-accent" />}
-                  title="Advanced Safety"
-                  text="Multi-layer protection against surges and thermal issues."
+                  icon={<ShieldCheck size={32} />}
+                  title="Advanced Safety Systems"
+                  text="Multi-layer protection built into every unit."
                 />
                 <Benefit 
-                  icon={<Battery className="text-accent" />}
-                  title="Long Battery Life"
-                  text="Premium cells designed for over 3000 charge cycles."
+                  icon={<Battery size={32} />}
+                  title="Long Lasting Battery Life"
+                  text="Premium cells designed for thousands of cycles."
                 />
                 <Benefit 
-                  icon={<Cpu className="text-accent" />}
-                  title="Reliable Performance"
-                  text="Stable output even under heavy industrial loads."
+                  icon={<Cpu size={32} />}
+                  title="Reliable Power Backup"
+                  text="Seamless switching and stable output always."
                 />
               </div>
             </div>
-            <div className="bg-card p-8 rounded-2xl border border-primary/10">
-              <h3 className="text-2xl font-bold font-headline mb-6" id="technology">Our Technology</h3>
-              <ul className="space-y-6">
-                <li className="flex gap-4">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Smart Lithium Tech</h4>
-                    <p className="text-sm text-muted-foreground">Automatic load balancing for optimal battery utilization.</p>
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Fast Charging</h4>
-                    <p className="text-sm text-muted-foreground">Get full backup 3x faster than traditional systems.</p>
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Thermal Safety</h4>
-                    <p className="text-sm text-muted-foreground">Active monitoring systems prevent overheating at all times.</p>
-                  </div>
-                </li>
-              </ul>
+            <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-primary/10">
+               <Image
+                src="https://picsum.photos/seed/revopz-factory/800/600"
+                alt="REVOPZ Quality Assurance"
+                fill
+                className="object-cover"
+                data-ai-hint="battery factory"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+              <div className="absolute bottom-8 left-8">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  <span className="text-xs font-bold tracking-widest uppercase text-white">Premium Engineering</span>
+                </div>
+                <p className="font-headline font-bold text-lg text-white">Trusted by thousands of customers</p>
+              </div>
             </div>
           </div>
         </div>
@@ -229,12 +220,14 @@ function CategoryCard({ icon, title, description, href }: { icon: React.ReactNod
 
 function Benefit({ icon, title, text }: { icon: React.ReactNode, title: string, text: string }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary transition-transform hover:scale-110">
         {icon}
-        <h4 className="font-bold">{title}</h4>
       </div>
-      <p className="text-sm text-muted-foreground leading-relaxed">{text}</p>
+      <div className="space-y-1">
+        <h4 className="text-xl font-bold font-headline">{title}</h4>
+        <p className="text-sm text-muted-foreground leading-relaxed">{text}</p>
+      </div>
     </div>
   );
 }
