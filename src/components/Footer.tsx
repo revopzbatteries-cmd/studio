@@ -57,8 +57,8 @@ export function Footer() {
               </Link>
               <Link 
                 href="https://wa.me/919746804951" 
-                target="_blank"
-                rel="noopener noreferrer"
+                target="_blank" 
+                rel="noopener noreferrer" 
                 title="Chat on WhatsApp"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
               >
@@ -121,6 +121,13 @@ export function Footer() {
             <Link href="#" className="hover:text-primary">Privacy Policy</Link>
             <Link href="#" className="hover:text-primary">Terms of Service</Link>
           </div>
+        </div>
+
+        {/* Developer Credit */}
+        <div className="mt-8 text-center">
+          <p className="text-[10px] text-muted-foreground/40 font-medium tracking-wide">
+            Built with care by <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link>
+          </p>
         </div>
       </div>
     </footer>
