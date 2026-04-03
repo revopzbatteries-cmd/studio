@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { JobApplication, INITIAL_APPLICATIONS } from '@/lib/applications';
 
 export default function CareersPage() {
   const { toast } = useToast();
@@ -27,9 +28,29 @@ export default function CareersPage() {
     }
   }, []);
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsApplying(true);
+    
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    const newApp: JobApplication = {
+      id: Math.random().toString(36).substr(2, 9),
+      applicantName: formData.get('name') as string,
+      email: formData.get('email') as string,
+      phone: formData.get('phone') as string,
+      jobTitle: selectedJob?.title || 'General Inquiry',
+      message: formData.get('message') as string,
+      status: 'New',
+      submittedAt: new Date().toISOString().split('T')[0]
+    };
+
+    // Simulate saving to shared storage
+    const existingAppsJson = localStorage.getItem('revopz_applications');
+    const existingApps: JobApplication[] = existingAppsJson ? JSON.parse(existingAppsJson) : INITIAL_APPLICATIONS;
+    localStorage.setItem('revopz_applications', JSON.stringify([newApp, ...existingApps]));
+
     setTimeout(() => {
       setIsApplying(false);
       setIsApplyModalOpen(false);
@@ -37,6 +58,7 @@ export default function CareersPage() {
         title: "Application Received",
         description: `Your application for ${selectedJob?.title} has been submitted successfully.`,
       });
+      form.reset();
     }, 1500);
   };
 
@@ -102,7 +124,6 @@ export default function CareersPage() {
               ))}
             </div>
           ) : (
-            /* Status Card (Fallback if zero jobs) */
             <div className="bg-card border border-border rounded-3xl p-8 md:p-12 text-center space-y-6 shadow-xl relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
               <h2 className="text-2xl md:text-3xl font-bold font-headline">No Current Openings</h2>
@@ -148,19 +169,19 @@ export default function CareersPage() {
           <form onSubmit={handleApplySubmit} className="space-y-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Full Name</Label>
-              <Input id="name" placeholder="John Doe" required className="bg-muted/50" />
+              <Input id="name" name="name" placeholder="John Doe" required className="bg-muted/50" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="john@example.com" required className="bg-muted/50" />
+              <Input id="email" name="email" type="email" placeholder="john@example.com" required className="bg-muted/50" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input id="phone" type="tel" placeholder="+91 00000 00000" required className="bg-muted/50" />
+              <Input id="phone" name="phone" type="tel" placeholder="+91 00000 00000" required className="bg-muted/50" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="message">Message / Cover Letter</Label>
-              <Textarea id="message" placeholder="Tell us why you're a good fit..." required className="bg-muted/50 min-h-[100px]" />
+              <Textarea id="message" name="message" placeholder="Tell us why you're a good fit..." required className="bg-muted/50 min-h-[100px]" />
             </div>
             <DialogFooter className="pt-4">
               <Button type="button" variant="ghost" onClick={() => setIsApplyModalOpen(false)}>Cancel</Button>

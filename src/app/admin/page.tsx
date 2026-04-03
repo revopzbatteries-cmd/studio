@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,12 +20,16 @@ import {
   X,
   Upload,
   ImageIcon,
-  Briefcase
+  Briefcase,
+  FileText,
+  Search,
+  Eye
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { PRODUCTS as initialProducts, Product } from '@/lib/products';
 import { Job, INITIAL_JOBS, JobType } from '@/lib/jobs';
+import { JobApplication, INITIAL_APPLICATIONS, ApplicationStatus } from '@/lib/applications';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -84,6 +88,7 @@ export default function AdminPage() {
     }
   ]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [applications, setApplications] = useState<JobApplication[]>([]);
 
   // Initialize and Sync Data
   useEffect(() => {
@@ -97,11 +102,24 @@ export default function AdminPage() {
       setJobs(INITIAL_JOBS);
       localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS));
     }
+
+    const savedApps = localStorage.getItem('revopz_applications');
+    if (savedApps) {
+      setApplications(JSON.parse(savedApps));
+    } else {
+      setApplications(INITIAL_APPLICATIONS);
+      localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS));
+    }
   }, []);
 
   const handleUpdateJobs = (newJobs: Job[]) => {
     setJobs(newJobs);
     localStorage.setItem('revopz_jobs', JSON.stringify(newJobs));
+  };
+
+  const handleUpdateApps = (newApps: JobApplication[]) => {
+    setApplications(newApps);
+    localStorage.setItem('revopz_applications', JSON.stringify(newApps));
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -203,6 +221,12 @@ export default function AdminPage() {
             icon={<Briefcase size={20} />}
             label="Career Mgmt"
           />
+          <SidebarButton 
+            active={activeTab === 'applications'} 
+            onClick={() => setActiveTab('applications')}
+            icon={<FileText size={20} />}
+            label="Applications"
+          />
         </nav>
 
         <div className="p-4 border-t">
@@ -220,7 +244,8 @@ export default function AdminPage() {
               <h1 className="text-3xl font-bold font-headline capitalize">
                 {activeTab === 'profile' ? 'Profile Management' : 
                  activeTab === 'products' ? 'Product Catalog' : 
-                 activeTab === 'warranty' ? 'Warranty Registry' : 'Career Management'}
+                 activeTab === 'warranty' ? 'Warranty Registry' : 
+                 activeTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">Manage your REVOPZ system operations and data.</p>
             </div>
@@ -241,6 +266,7 @@ export default function AdminPage() {
             {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} />}
             {activeTab === 'warranty' && <WarrantySection products={products} warranties={warranties} setWarranties={setWarranties} />}
             {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} />}
+            {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} />}
           </div>
         </div>
       </main>
@@ -913,5 +939,192 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+function ApplicationsSection({ applications, setApplications }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void }) {
+  const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedApp, setSelectedApp] = useState<JobApplication | null>(null);
+
+  const filteredApps = useMemo(() => {
+    return applications.filter(app => {
+      const matchesSearch = app.applicantName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            app.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [applications, searchTerm, statusFilter]);
+
+  const handleUpdateStatus = (id: string, newStatus: ApplicationStatus) => {
+    const updated = applications.map(app => app.id === id ? { ...app, status: newStatus } : app);
+    setApplications(updated);
+    toast({ title: "Status Updated", description: `Application status changed to ${newStatus}.` });
+  };
+
+  const handleDelete = (id: string) => {
+    const updated = applications.filter(app => app.id !== id);
+    setApplications(updated);
+    toast({ title: "Application Deleted", description: "The application has been removed." });
+  };
+
+  const getStatusBadge = (status: ApplicationStatus) => {
+    switch (status) {
+      case 'New': return <Badge className="bg-blue-500 hover:bg-blue-600">New</Badge>;
+      case 'Under Review': return <Badge className="bg-orange-500 hover:bg-orange-600 text-white">Under Review</Badge>;
+      case 'Shortlisted': return <Badge className="bg-green-500 hover:bg-green-600">Shortlisted</Badge>;
+      case 'Rejected': return <Badge variant="destructive">Rejected</Badge>;
+      default: return <Badge>{status}</Badge>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Applications Overview</CardTitle>
+          <CardDescription>Track and manage candidate submissions.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+              <Input 
+                placeholder="Search by name or job..." 
+                className="pl-10" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="w-full md:w-48">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="New">New</SelectItem>
+                  <SelectItem value="Under Review">Under Review</SelectItem>
+                  <SelectItem value="Shortlisted">Shortlisted</SelectItem>
+                  <SelectItem value="Rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Applicant</TableHead>
+                <TableHead>Job Title</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredApps.length > 0 ? filteredApps.map((app) => (
+                <TableRow key={app.id}>
+                  <TableCell className="font-medium">
+                    <div>
+                      <p>{app.applicantName}</p>
+                      <p className="text-xs text-muted-foreground">{app.email}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>{app.jobTitle}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{app.submittedAt}</TableCell>
+                  <TableCell>{getStatusBadge(app.status)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedApp(app)}><Eye size={16} /></Button>
+                        </DialogTrigger>
+                        <DialogContent className="bg-card sm:max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle className="text-2xl font-headline">Application Detail</DialogTitle>
+                            <DialogDescription>Review candidate information and update hiring status.</DialogDescription>
+                          </DialogHeader>
+                          {selectedApp && (
+                            <div className="space-y-6 py-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Applicant</Label>
+                                  <p className="text-lg font-bold">{selectedApp.applicantName}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Role Applied For</Label>
+                                  <p className="text-lg font-bold text-primary">{selectedApp.jobTitle}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Email</Label>
+                                  <p className="text-sm">{selectedApp.email}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Phone</Label>
+                                  <p className="text-sm">{selectedApp.phone}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase font-bold">Message / Cover Letter</Label>
+                                <div className="p-4 rounded-lg bg-muted/50 text-sm italic leading-relaxed whitespace-pre-wrap">
+                                  "{selectedApp.message}"
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
+                                <Select 
+                                  defaultValue={selectedApp.status} 
+                                  onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Update Status" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-popover">
+                                    <SelectItem value="New">New</SelectItem>
+                                    <SelectItem value="Under Review">Under Review</SelectItem>
+                                    <SelectItem value="Shortlisted">Shortlisted</SelectItem>
+                                    <SelectItem value="Rejected">Rejected</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Application?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to remove the application from {app.applicantName}? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(app.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                    No applications found matching your filters.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
