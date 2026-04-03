@@ -25,5 +25,13 @@ export const INITIAL_JOBS: Job[] = [
     type: 'Full-time',
     description: 'Drive sales growth and maintain relationships with our dealer network across Kerala.',
     postedAt: '2024-03-22'
+  },
+  {
+    id: '3',
+    title: 'Junior Service Technician',
+    location: 'Palakkad, Kerala',
+    type: 'Full-time',
+    description: 'We are looking for a Junior Service Technician to support installation, maintenance, and troubleshooting of lithium inverter and battery systems. Candidates should have basic electrical knowledge and a willingness to learn.',
+    postedAt: '2024-03-25'
   }
 ];
