@@ -1,12 +1,20 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Instagram, MessageCircle, Phone, Mail, MapPin, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function Footer() {
+  const [mounted, setMounted] = useState(false);
   const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
   const instagramUrl = "https://www.instagram.com/revopz._/";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentYear = mounted ? new Date().getFullYear() : 2025;
 
   return (
     <footer className="bg-muted pt-16 pb-8 border-t">
@@ -116,7 +124,7 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} REVOPZ Energy Systems. All rights reserved.</p>
+          <p>© {currentYear} REVOPZ Energy Systems. All rights reserved.</p>
           <div className="flex space-x-6">
             <Link href="#" className="hover:text-primary">Privacy Policy</Link>
             <Link href="#" className="hover:text-primary">Terms of Service</Link>
@@ -126,7 +134,10 @@ export function Footer() {
         {/* Developer Credit */}
         <div className="mt-8 text-center">
           <p className="text-[10px] text-muted-foreground/40 font-medium tracking-wide">
-            Built with care by <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link> & <Link href="#" className="hover:text-primary transition-colors">Prajosh</Link>
+            {"Built with care by "}
+            <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link>
+            {" & "}
+            <Link href="#" className="hover:text-primary transition-colors">Prajosh</Link>
           </p>
         </div>
       </div>

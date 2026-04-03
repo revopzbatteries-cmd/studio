@@ -601,9 +601,16 @@ function WarrantySection({ products, warranties, setWarranties }: { products: Pr
     productName: '',
     serialNumber: '',
     customerName: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
+    purchaseDate: '',
     warrantyPeriod: '24 Months'
   });
+
+  useEffect(() => {
+    setNewEntry(prev => ({
+      ...prev,
+      purchaseDate: new Date().toISOString().split('T')[0]
+    }));
+  }, []);
 
   const handleAddWarranty = () => {
     if (!newEntry.serialNumber || !newEntry.customerName) return;
