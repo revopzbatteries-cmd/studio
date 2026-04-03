@@ -1202,19 +1202,3 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
     </div>
   );
 }
-
-function SidebarButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-        active 
-          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
