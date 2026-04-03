@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 
 export function Footer() {
   const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
+  const instagramUrl = "https://www.instagram.com/revopz._/";
 
   return (
     <footer className="bg-muted pt-16 pb-8 border-t">
@@ -19,10 +20,22 @@ export function Footer() {
               Powering homes and businesses with reliable energy systems.
             </p>
             <div className="flex space-x-4">
-              <Link href="https://wa.me/919746804951" className="text-muted-foreground hover:text-primary transition-colors">
+              <Link 
+                href="https://wa.me/919746804951" 
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Chat on WhatsApp"
+                className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+              >
                 <MessageCircle size={20} />
               </Link>
-              <Link href="#" className="text-muted-foreground hover:text-primary transition-colors">
+              <Link 
+                href={instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Follow us on Instagram"
+                className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
+              >
                 <Instagram size={20} />
               </Link>
             </div>

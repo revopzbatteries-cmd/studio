@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink, Instagram } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ContactPage() {
@@ -27,6 +27,7 @@ export default function ContactPage() {
   };
 
   const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
+  const instagramUrl = "https://www.instagram.com/revopz._/";
 
   return (
     <div className="w-full py-16 lg:py-24">
@@ -51,6 +52,12 @@ export default function ContactPage() {
                 title="WhatsApp"
                 value="+91 97468 04951"
                 href="https://wa.me/919746804951"
+              />
+              <ContactItem 
+                icon={<Instagram className="text-primary" />}
+                title="Instagram"
+                value="@revopz._"
+                href={instagramUrl}
               />
               <ContactItem 
                 icon={<Mail className="text-primary" />}
@@ -174,8 +181,15 @@ export default function ContactPage() {
 }
 
 function ContactItem({ icon, title, value, href }: { icon: React.ReactNode, title: string, value: string, href: string }) {
+  const isExternal = href.startsWith('http');
   return (
-    <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel={href.startsWith('http') ? 'noopener noreferrer' : undefined} className="flex items-start gap-4 group">
+    <a 
+      href={href} 
+      target={isExternal ? '_blank' : undefined} 
+      rel={isExternal ? 'noopener noreferrer' : undefined} 
+      className="flex items-start gap-4 group"
+      title={isExternal ? `Visit our ${title}` : `Contact us via ${title}`}
+    >
       <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
         {icon}
       </div>
