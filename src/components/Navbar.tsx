@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -13,6 +12,7 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 const NAV_LINKS = [
   { name: 'Products', href: '/products' },
   { name: 'About', href: '/about' },
+  { name: 'Careers', href: '/careers' },
   { name: 'Contact', href: '/contact' },
   { name: 'Warranty', href: '/warranty' },
 ];
