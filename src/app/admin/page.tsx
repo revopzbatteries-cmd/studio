@@ -19,11 +19,13 @@ import {
   CheckCircle2,
   X,
   Upload,
-  ImageIcon
+  ImageIcon,
+  Briefcase
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { PRODUCTS as initialProducts, Product } from '@/lib/products';
+import { Job, INITIAL_JOBS, JobType } from '@/lib/jobs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -81,12 +83,26 @@ export default function AdminPage() {
       status: 'Claimed' 
     }
   ]);
+  const [jobs, setJobs] = useState<Job[]>([]);
 
-  // Auth check
+  // Initialize and Sync Data
   useEffect(() => {
     const auth = localStorage.getItem('revopz_admin_auth');
     if (auth === 'true') setIsLoggedIn(true);
+
+    const savedJobs = localStorage.getItem('revopz_jobs');
+    if (savedJobs) {
+      setJobs(JSON.parse(savedJobs));
+    } else {
+      setJobs(INITIAL_JOBS);
+      localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS));
+    }
   }, []);
+
+  const handleUpdateJobs = (newJobs: Job[]) => {
+    setJobs(newJobs);
+    localStorage.setItem('revopz_jobs', JSON.stringify(newJobs));
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +197,12 @@ export default function AdminPage() {
             icon={<ShieldCheck size={20} />}
             label="Warranty Mgmt"
           />
+          <SidebarButton 
+            active={activeTab === 'careers'} 
+            onClick={() => setActiveTab('careers')}
+            icon={<Briefcase size={20} />}
+            label="Career Mgmt"
+          />
         </nav>
 
         <div className="p-4 border-t">
@@ -197,7 +219,8 @@ export default function AdminPage() {
             <div>
               <h1 className="text-3xl font-bold font-headline capitalize">
                 {activeTab === 'profile' ? 'Profile Management' : 
-                 activeTab === 'products' ? 'Product Catalog' : 'Warranty Registry'}
+                 activeTab === 'products' ? 'Product Catalog' : 
+                 activeTab === 'warranty' ? 'Warranty Registry' : 'Career Management'}
               </h1>
               <p className="text-muted-foreground">Manage your REVOPZ system operations and data.</p>
             </div>
@@ -217,6 +240,7 @@ export default function AdminPage() {
             {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} />}
             {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} />}
             {activeTab === 'warranty' && <WarrantySection products={products} warranties={warranties} setWarranties={setWarranties} />}
+            {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} />}
           </div>
         </div>
       </main>
@@ -724,6 +748,164 @@ function WarrantySection({ products, warranties, setWarranties }: { products: Pr
                   <Button variant="outline" size="sm" onClick={() => toggleStatus(w.id)}>
                     {w.status === 'Active' ? 'Mark Claimed' : 'Activate'}
                   </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (jobs: Job[]) => void }) {
+  const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
+  
+  const [formData, setFormData] = useState<Partial<Job>>({
+    title: '',
+    location: '',
+    type: 'Full-time',
+    description: ''
+  });
+
+  const openAddDialog = () => {
+    setEditingJob(null);
+    setFormData({
+      title: '',
+      location: '',
+      type: 'Full-time',
+      description: ''
+    });
+    setIsDialogOpen(true);
+  };
+
+  const openEditDialog = (job: Job) => {
+    setEditingJob(job);
+    setFormData({ ...job });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    const newJobs = jobs.filter(j => j.id !== id);
+    setJobs(newJobs);
+    toast({ title: "Job Deleted", description: "The job listing has been removed." });
+  };
+
+  const handleSaveJob = () => {
+    if (!formData.title || !formData.location) return;
+
+    if (editingJob) {
+      const newJobs = jobs.map(j => j.id === editingJob.id ? { ...editingJob, ...formData } as Job : j);
+      setJobs(newJobs);
+      toast({ title: "Job Updated", description: `${formData.title} listing has been updated.` });
+    } else {
+      const newJob: Job = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: formData.title || '',
+        location: formData.location || '',
+        type: (formData.type as JobType) || 'Full-time',
+        description: formData.description || '',
+        postedAt: new Date().toISOString().split('T')[0]
+      };
+      setJobs([...jobs, newJob]);
+      toast({ title: "Job Added", description: `${newJob.title} is now active on the careers page.` });
+    }
+    setIsDialogOpen(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-lg">Job Listings</CardTitle>
+          <CardDescription>Manage open positions for REVOPZ.</CardDescription>
+        </div>
+        <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+          <Plus size={16} className="mr-2" /> Add Job
+        </Button>
+      </CardHeader>
+      
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="bg-card">
+          <DialogHeader>
+            <DialogTitle>{editingJob ? 'Edit Job' : 'Add New Job'}</DialogTitle>
+            <DialogDescription>Enter the job details for prospective candidates.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Job Title</Label>
+              <Input value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} placeholder="e.g. Sales Manager" />
+            </div>
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <Input value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="e.g. Palakkad, Kerala" />
+            </div>
+            <div className="space-y-2">
+              <Label>Job Type</Label>
+              <Select value={formData.type} onValueChange={(v: any) => setFormData({...formData, type: v})}>
+                <SelectTrigger><SelectValue placeholder="Select Type" /></SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="Full-time">Full-time</SelectItem>
+                  <SelectItem value="Part-time">Part-time</SelectItem>
+                  <SelectItem value="Internship">Internship</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Short Description</Label>
+              <Textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Brief overview of the role..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveJob}>{editingJob ? 'Update Job' : 'Save Job'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Title</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {jobs.map((job) => (
+              <TableRow key={job.id}>
+                <TableCell className="font-medium">{job.title}</TableCell>
+                <TableCell className="text-muted-foreground">{job.location}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{job.type}</Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
+                      <Edit size={16} />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-card">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Job?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete the "{job.title}" position?
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
