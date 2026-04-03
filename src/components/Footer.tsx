@@ -126,7 +126,7 @@ export function Footer() {
         {/* Developer Credit */}
         <div className="mt-8 text-center">
           <p className="text-[10px] text-muted-foreground/40 font-medium tracking-wide">
-            Built with care by <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link>
+            Built with care by <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link> & <Link href="#" className="hover:text-primary transition-colors">Prajosh</Link>
           </p>
         </div>
       </div>
