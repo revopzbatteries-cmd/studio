@@ -25,7 +25,11 @@ export function Footer() {
     setMounted(true);
   }, []);
 
-  const currentYear = mounted ? new Date().getFullYear() : 2025;
+  const currentYear = mounted ? new Date().getFullYear() : 2026;
+
+  const handleLinkClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
 
   return (
     <footer className="bg-muted pt-16 pb-8 border-t">
@@ -45,7 +49,7 @@ export function Footer() {
                 href="#" 
                 title="LinkedIn"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
-                onClick={(e) => e.preventDefault()}
+                onClick={handleLinkClick}
               >
                 <Linkedin size={20} />
               </Link>
@@ -53,7 +57,7 @@ export function Footer() {
                 href="#" 
                 title="X (Twitter)"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
-                onClick={(e) => e.preventDefault()}
+                onClick={handleLinkClick}
               >
                 <Twitter size={20} />
               </Link>
@@ -61,7 +65,7 @@ export function Footer() {
                 href="#" 
                 title="Facebook"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
-                onClick={(e) => e.preventDefault()}
+                onClick={handleLinkClick}
               >
                 <Facebook size={20} />
               </Link>
@@ -91,7 +95,6 @@ export function Footer() {
             <h4 className="font-headline font-semibold mb-4">Company</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/about" className="hover:text-primary">About Us</Link></li>
-              <li><Link href="/careers" className="hover:text-primary">Careers</Link></li>
               <li><Link href="/products" className="hover:text-primary">Our Products</Link></li>
               <li><Link href="/warranty" className="hover:text-primary">Warranty</Link></li>
               <li><Link href="/contact" className="hover:text-primary">Contact Us</Link></li>
@@ -169,7 +172,7 @@ export function Footer() {
 
       {/* Privacy Policy Modal */}
       <Dialog open={privacyOpen} onOpenChange={setPrivacyOpen}>
-        <DialogContent className="max-w-[800px] bg-card border-primary/20 p-0 overflow-hidden sm:min-[661px]:backdrop-blur-md">
+        <DialogContent className="max-w-[800px] bg-card border-primary/20 p-0 overflow-hidden">
           <div className="p-6 md:p-8">
             <DialogHeader className="mb-6">
               <DialogTitle className="text-2xl font-headline text-primary">Privacy Policy</DialogTitle>
@@ -215,7 +218,7 @@ export function Footer() {
 
       {/* Terms & Conditions Modal */}
       <Dialog open={termsOpen} onOpenChange={setTermsOpen}>
-        <DialogContent className="max-w-[800px] bg-card border-primary/20 p-0 overflow-hidden sm:min-[661px]:backdrop-blur-md">
+        <DialogContent className="max-w-[800px] bg-card border-primary/20 p-0 overflow-hidden">
           <div className="p-6 md:p-8">
             <DialogHeader className="mb-6">
               <DialogTitle className="text-2xl font-headline text-primary">Terms & Conditions</DialogTitle>
