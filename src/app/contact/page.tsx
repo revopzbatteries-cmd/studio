@@ -8,13 +8,71 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Phone, Mail, MapPin, MessageCircle, Loader2, ExternalLink, Instagram, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function ContactPage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form State
+  const [generalPhone, setGeneralPhone] = useState('');
+  const [dealerPhone, setDealerPhone] = useState('');
+  const [generalPhoneError, setGeneralPhoneError] = useState(false);
+  const [dealerPhoneError, setDealerPhoneError] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validatePhone = (phone: string) => {
+    // Strip spaces for validation
+    const cleanPhone = phone.replace(/\s/g, '');
+    // Regex for: optional +91 followed by exactly 10 digits
+    const phoneRegex = /^(\+91)?\d{10}$/;
+    return phoneRegex.test(cleanPhone);
+  };
+
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/[^\d+]/g, '');
+    if (numbers.startsWith('+91')) {
+      const main = numbers.slice(3, 13);
+      if (main.length > 5) {
+        return `+91 ${main.slice(0, 5)} ${main.slice(5, 10)}`;
+      }
+      return numbers;
+    }
+    const main = numbers.slice(0, 10);
+    if (main.length > 5) {
+      return `${main.slice(0, 5)} ${main.slice(5, 10)}`;
+    }
+    return main;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'dealer') => {
+    const formatted = formatPhone(e.target.value);
+    const isValid = validatePhone(formatted);
+    
+    if (type === 'general') {
+      setGeneralPhone(formatted);
+      setGeneralPhoneError(!isValid && formatted.length > 0);
+    } else {
+      setDealerPhone(formatted);
+      setDealerPhoneError(!isValid && formatted.length > 0);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent, type: 'general' | 'dealer') => {
     e.preventDefault();
+    
+    const phoneToValidate = type === 'general' ? generalPhone : dealerPhone;
+    if (!validatePhone(phoneToValidate)) {
+      if (type === 'general') setGeneralPhoneError(true);
+      else setDealerPhoneError(true);
+      
+      toast({
+        variant: "destructive",
+        title: "Invalid Phone Number",
+        description: "Please enter a valid 10-digit phone number.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setTimeout(() => {
       setIsSubmitting(false);
@@ -23,6 +81,8 @@ export default function ContactPage() {
         description: "Our representative will get in touch with you shortly.",
       });
       (e.target as HTMLFormElement).reset();
+      if (type === 'general') setGeneralPhone('');
+      else setDealerPhone('');
     }, 1500);
   };
 
@@ -104,15 +164,30 @@ export default function ContactPage() {
               </TabsList>
               
               <TabsContent value="general">
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={(e) => handleSubmit(e, 'general')} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label>Full Name</Label>
                       <Input placeholder="John Doe" required className="h-12 bg-muted/30" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Phone Number</Label>
-                      <Input type="tel" placeholder="+91 00000 00000" required className="h-12 bg-muted/30" />
+                      <Label className={cn(generalPhoneError && "text-destructive")}>Phone Number</Label>
+                      <Input 
+                        type="tel" 
+                        placeholder="+91 98765 43210" 
+                        required 
+                        value={generalPhone}
+                        onChange={(e) => handlePhoneChange(e, 'general')}
+                        className={cn(
+                          "h-12 bg-muted/30 transition-colors",
+                          generalPhoneError && "border-destructive focus-visible:ring-destructive"
+                        )}
+                      />
+                      {generalPhoneError && (
+                        <p className="text-xs text-destructive mt-1 animate-in fade-in slide-in-from-top-1">
+                          Please enter a valid 10-digit phone number
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -130,7 +205,7 @@ export default function ContactPage() {
               </TabsContent>
 
               <TabsContent value="dealer">
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={(e) => handleSubmit(e, 'dealer')} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label>Business Name</Label>
@@ -147,8 +222,23 @@ export default function ContactPage() {
                       <Input type="email" placeholder="jane@example.com" required className="h-12 bg-muted/30" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Phone Number</Label>
-                      <Input type="tel" placeholder="+91 00000 00000" required className="h-12 bg-muted/30" />
+                      <Label className={cn(dealerPhoneError && "text-destructive")}>Phone Number</Label>
+                      <Input 
+                        type="tel" 
+                        placeholder="+91 98765 43210" 
+                        required 
+                        value={dealerPhone}
+                        onChange={(e) => handlePhoneChange(e, 'dealer')}
+                        className={cn(
+                          "h-12 bg-muted/30 transition-colors",
+                          dealerPhoneError && "border-destructive focus-visible:ring-destructive"
+                        )}
+                      />
+                      {dealerPhoneError && (
+                        <p className="text-xs text-destructive mt-1 animate-in fade-in slide-in-from-top-1">
+                          Please enter a valid 10-digit phone number
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
