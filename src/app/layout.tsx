@@ -3,6 +3,7 @@ import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { Toaster } from '@/components/ui/toaster';
+import { AIAssistant } from '@/components/AIAssistant';
 
 export const metadata: Metadata = {
   title: 'REVOPZ Energy Systems | Premium Lithium Inverters & Batteries',
@@ -27,6 +28,7 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
+        <AIAssistant />
         <Toaster />
       </body>
     </html>
