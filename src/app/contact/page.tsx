@@ -12,11 +12,19 @@ import { cn } from '@/lib/utils';
 
 export default function ContactPage() {
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Form State
+  const [isSubmittingGeneral, setIsSubmittingGeneral] = useState(false);
+  const [isSubmittingDealer, setIsSubmittingDealer] = useState(false);
+
+  // General Enquiry controlled fields
+  const [generalName, setGeneralName] = useState('');
   const [generalPhone, setGeneralPhone] = useState('');
+  const [generalEmail, setGeneralEmail] = useState('');
+  const [generalMessage, setGeneralMessage] = useState('');
+
+  // Dealer form phone
   const [dealerPhone, setDealerPhone] = useState('');
+
+  // Validation errors
   const [generalPhoneError, setGeneralPhoneError] = useState(false);
   const [dealerPhoneError, setDealerPhoneError] = useState(false);
 
@@ -47,7 +55,7 @@ export default function ContactPage() {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'dealer') => {
     const formatted = formatPhone(e.target.value);
     const isValid = validatePhone(formatted);
-    
+
     if (type === 'general') {
       setGeneralPhone(formatted);
       setGeneralPhoneError(!isValid && formatted.length > 0);
@@ -57,33 +65,80 @@ export default function ContactPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent, type: 'general' | 'dealer') => {
+  // ── Google Form configuration ───────────────────────────────────────────────
+  const GOOGLE_FORM_ACTION =
+    'https://docs.google.com/forms/u/0/d/e/1FAIpQLSdyW23wOwz3xGz0Vgf-NqM-T3x7nFdaXkLJonaqMWoqhBL8Zg/formResponse';
+
+  const submitToGoogleForm = async (data: Record<string, string>): Promise<void> => {
+    const body = new URLSearchParams(data);
+    // no-cors is required — Google Forms does not send CORS headers.
+    // The response will be opaque (we cannot read it), but the submission
+    // lands in the spreadsheet as long as the payload is well-formed.
+    await fetch(GOOGLE_FORM_ACTION, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const handleSubmit = async (e: React.FormEvent, type: 'general' | 'dealer') => {
     e.preventDefault();
-    
+
     const phoneToValidate = type === 'general' ? generalPhone : dealerPhone;
     if (!validatePhone(phoneToValidate)) {
       if (type === 'general') setGeneralPhoneError(true);
       else setDealerPhoneError(true);
-      
+
       toast({
-        variant: "destructive",
-        title: "Invalid Phone Number",
-        description: "Please enter a valid 10-digit phone number.",
+        variant: 'destructive',
+        title: 'Invalid Phone Number',
+        description: 'Please enter a valid 10-digit phone number.',
       });
       return;
     }
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast({
-        title: "Request Received",
-        description: "Our representative will get in touch with you shortly.",
-      });
-      (e.target as HTMLFormElement).reset();
-      if (type === 'general') setGeneralPhone('');
-      else setDealerPhone('');
-    }, 1500);
+    if (type === 'general') {
+      setIsSubmittingGeneral(true);
+      try {
+        await submitToGoogleForm({
+          'entry.1898505011': generalName,
+          'entry.1108166281': generalPhone,
+          'entry.1773144585': generalEmail,
+          'entry.264775934': generalMessage,
+        });
+        toast({
+          title: 'Message Sent!',
+          description: 'Our representative will get in touch with you shortly.',
+        });
+        // Reset general enquiry fields
+        setGeneralName('');
+        setGeneralPhone('');
+        setGeneralEmail('');
+        setGeneralMessage('');
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'Submission Failed',
+          description: 'Something went wrong. Please try again or contact us directly.',
+        });
+      } finally {
+        setIsSubmittingGeneral(false);
+      }
+    } else {
+      // Dealer form — keep existing mock behaviour until its endpoint is set up
+      setIsSubmittingDealer(true);
+      setTimeout(() => {
+        setIsSubmittingDealer(false);
+        toast({
+          title: 'Application Received',
+          description: 'Our team will review your dealership application and contact you soon.',
+        });
+        (e.target as HTMLFormElement).reset();
+        setDealerPhone('');
+      }, 1500);
+    }
   };
 
   const googleMapsUrl = "https://www.google.com/maps?q=10.781742,76.070464";
@@ -101,52 +156,52 @@ export default function ContactPage() {
             </div>
 
             <div className="space-y-6">
-              <ContactItem 
+              <ContactItem
                 icon={<Phone className="text-primary" />}
                 title="Phone"
                 value="+91 97468 04951"
                 href="tel:+919746804951"
               />
-              <ContactItem 
+              <ContactItem
                 icon={<MessageCircle className="text-primary" />}
                 title="WhatsApp"
                 value="+91 97468 04951"
                 href="https://wa.me/919746804951"
               />
-              <ContactItem 
+              <ContactItem
                 icon={<Linkedin className="text-primary" />}
                 title="LinkedIn"
                 value="Follow us on LinkedIn"
                 href="#"
                 onClick={(e) => e.preventDefault()}
               />
-              <ContactItem 
+              <ContactItem
                 icon={<Twitter className="text-primary" />}
                 title="X (Twitter)"
                 value="Follow us on X"
                 href="#"
                 onClick={(e) => e.preventDefault()}
               />
-              <ContactItem 
+              <ContactItem
                 icon={<Facebook className="text-primary" />}
                 title="Facebook"
                 value="Follow us on Facebook"
                 href="#"
                 onClick={(e) => e.preventDefault()}
               />
-              <ContactItem 
+              <ContactItem
                 icon={<Instagram className="text-primary" />}
                 title="Instagram"
                 value="@revopz._"
                 href={instagramUrl}
               />
-              <ContactItem 
+              <ContactItem
                 icon={<Mail className="text-primary" />}
                 title="Email"
                 value="info@revopz.com"
                 href="mailto:info@revopz.com"
               />
-              <ContactItem 
+              <ContactItem
                 icon={<MapPin className="text-primary" />}
                 title="Location"
                 value="Koottanad Road, Padinjarangadi, Near HP Petrol Pump, Pattambi, Palakkad, Kerala, India"
@@ -162,25 +217,35 @@ export default function ContactPage() {
                 <TabsTrigger value="general" className="py-4 text-base font-medium">General Enquiry</TabsTrigger>
                 <TabsTrigger value="dealer" className="py-4 text-base font-medium">Dealership Form</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="general">
                 <form onSubmit={(e) => handleSubmit(e, 'general')} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label>Full Name</Label>
-                      <Input placeholder="John Doe" required className="h-12 bg-muted/30" />
+                      <Label htmlFor="general-name">Full Name</Label>
+                      <Input
+                        id="general-name"
+                        placeholder="John Doe"
+                        required
+                        value={generalName}
+                        onChange={(e) => setGeneralName(e.target.value)}
+                        className="h-12 bg-muted/30"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label className={cn(generalPhoneError && "text-destructive")}>Phone Number</Label>
-                      <Input 
-                        type="tel" 
-                        placeholder="+91 98765 43210" 
-                        required 
+                      <Label htmlFor="general-phone" className={cn(generalPhoneError && 'text-destructive')}>
+                        Phone Number
+                      </Label>
+                      <Input
+                        id="general-phone"
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        required
                         value={generalPhone}
                         onChange={(e) => handlePhoneChange(e, 'general')}
                         className={cn(
-                          "h-12 bg-muted/30 transition-colors",
-                          generalPhoneError && "border-destructive focus-visible:ring-destructive"
+                          'h-12 bg-muted/30 transition-colors',
+                          generalPhoneError && 'border-destructive focus-visible:ring-destructive'
                         )}
                       />
                       {generalPhoneError && (
@@ -191,15 +256,35 @@ export default function ContactPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Email Address</Label>
-                    <Input type="email" placeholder="john@example.com" required className="h-12 bg-muted/30" />
+                    <Label htmlFor="general-email">Email Address</Label>
+                    <Input
+                      id="general-email"
+                      type="email"
+                      placeholder="john@example.com"
+                      required
+                      value={generalEmail}
+                      onChange={(e) => setGeneralEmail(e.target.value)}
+                      className="h-12 bg-muted/30"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Your Message</Label>
-                    <Textarea placeholder="How can we help you today?" required className="min-h-[150px] bg-muted/30" />
+                    <Label htmlFor="general-message">Your Message</Label>
+                    <Textarea
+                      id="general-message"
+                      placeholder="How can we help you today?"
+                      required
+                      value={generalMessage}
+                      onChange={(e) => setGeneralMessage(e.target.value)}
+                      className="min-h-[150px] bg-muted/30"
+                    />
                   </div>
-                  <Button type="submit" size="lg" className="w-full bg-primary hover:bg-primary/90 py-6" disabled={isSubmitting}>
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : 'Send Message'}
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full bg-primary hover:bg-primary/90 py-6"
+                    disabled={isSubmittingGeneral}
+                  >
+                    {isSubmittingGeneral ? <Loader2 className="animate-spin" /> : 'Send Message'}
                   </Button>
                 </form>
               </TabsContent>
@@ -223,10 +308,10 @@ export default function ContactPage() {
                     </div>
                     <div className="space-y-2">
                       <Label className={cn(dealerPhoneError && "text-destructive")}>Phone Number</Label>
-                      <Input 
-                        type="tel" 
-                        placeholder="+91 98765 43210" 
-                        required 
+                      <Input
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        required
                         value={dealerPhone}
                         onChange={(e) => handlePhoneChange(e, 'dealer')}
                         className={cn(
@@ -249,8 +334,8 @@ export default function ContactPage() {
                     <Label>Current Business Details</Label>
                     <Textarea placeholder="Tell us about your current business and reach..." required className="min-h-[120px] bg-muted/30" />
                   </div>
-                  <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 py-6" disabled={isSubmitting}>
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : 'Apply for Dealership'}
+                  <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 py-6" disabled={isSubmittingDealer}>
+                    {isSubmittingDealer ? <Loader2 className="animate-spin" /> : 'Apply for Dealership'}
                   </Button>
                 </form>
               </TabsContent>
@@ -276,12 +361,12 @@ export default function ContactPage() {
           </div>
 
           <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-3xl overflow-hidden border border-border shadow-2xl relative bg-muted/20">
-            <iframe 
-              src="https://maps.google.com/maps?q=10.781742,76.070464&z=15&output=embed" 
+            <iframe
+              src="https://maps.google.com/maps?q=10.781742,76.070464&z=15&output=embed"
               className="absolute inset-0 w-full h-full grayscale contrast-125 opacity-90"
               style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg) brightness(0.85) contrast(1.1)' }}
-              allowFullScreen={true} 
-              loading="lazy" 
+              allowFullScreen={true}
+              loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
           </div>
@@ -294,10 +379,10 @@ export default function ContactPage() {
 function ContactItem({ icon, title, value, href, onClick }: { icon: React.ReactNode, title: string, value: string, href: string, onClick?: (e: React.MouseEvent) => void }) {
   const isExternal = href.startsWith('http');
   return (
-    <a 
-      href={href} 
-      target={isExternal ? '_blank' : undefined} 
-      rel={isExternal ? 'noopener noreferrer' : undefined} 
+    <a
+      href={href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
       onClick={onClick}
       className="flex items-start gap-4 group"
       title={isExternal ? `Visit our ${title}` : `Contact us via ${title}`}
