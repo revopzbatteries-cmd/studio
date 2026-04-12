@@ -21,8 +21,13 @@ export default function ContactPage() {
   const [generalEmail, setGeneralEmail] = useState('');
   const [generalMessage, setGeneralMessage] = useState('');
 
-  // Dealer form phone
+  // Dealer form controlled fields
+  const [dealerBusinessName, setDealerBusinessName] = useState('');
+  const [dealerContactPerson, setDealerContactPerson] = useState('');
+  const [dealerEmail, setDealerEmail] = useState('');
   const [dealerPhone, setDealerPhone] = useState('');
+  const [dealerLocation, setDealerLocation] = useState('');
+  const [dealerBizDetails, setDealerBizDetails] = useState('');
 
   // Validation errors
   const [generalPhoneError, setGeneralPhoneError] = useState(false);
@@ -66,15 +71,18 @@ export default function ContactPage() {
   };
 
   // ── Google Form configuration ───────────────────────────────────────────────
-  const GOOGLE_FORM_ACTION =
+  const GENERAL_FORM_ACTION =
     'https://docs.google.com/forms/u/0/d/e/1FAIpQLSdyW23wOwz3xGz0Vgf-NqM-T3x7nFdaXkLJonaqMWoqhBL8Zg/formResponse';
 
-  const submitToGoogleForm = async (data: Record<string, string>): Promise<void> => {
+  const DEALER_FORM_ACTION =
+    'https://docs.google.com/forms/u/0/d/e/1FAIpQLSeS5ZWtJJFJtslEmjgyXzt8zFZMwHNkMn2Kxgtm6rnBKM4H0A/formResponse';
+
+  const submitToGoogleForm = async (action: string, data: Record<string, string>): Promise<void> => {
     const body = new URLSearchParams(data);
     // no-cors is required — Google Forms does not send CORS headers.
     // The response will be opaque (we cannot read it), but the submission
     // lands in the spreadsheet as long as the payload is well-formed.
-    await fetch(GOOGLE_FORM_ACTION, {
+    await fetch(action, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -102,7 +110,7 @@ export default function ContactPage() {
     if (type === 'general') {
       setIsSubmittingGeneral(true);
       try {
-        await submitToGoogleForm({
+        await submitToGoogleForm(GENERAL_FORM_ACTION, {
           'entry.1898505011': generalName,
           'entry.1108166281': generalPhone,
           'entry.1773144585': generalEmail,
@@ -112,7 +120,6 @@ export default function ContactPage() {
           title: 'Message Sent!',
           description: 'Our representative will get in touch with you shortly.',
         });
-        // Reset general enquiry fields
         setGeneralName('');
         setGeneralPhone('');
         setGeneralEmail('');
@@ -127,17 +134,35 @@ export default function ContactPage() {
         setIsSubmittingGeneral(false);
       }
     } else {
-      // Dealer form — keep existing mock behaviour until its endpoint is set up
       setIsSubmittingDealer(true);
-      setTimeout(() => {
-        setIsSubmittingDealer(false);
+      try {
+        await submitToGoogleForm(DEALER_FORM_ACTION, {
+          'entry.742173392':  dealerBusinessName,
+          'entry.2083567702': dealerContactPerson,
+          'entry.909203719':  dealerEmail,
+          'entry.1600660088': dealerPhone,
+          'entry.566495979':  dealerLocation,
+          'entry.1059360787': dealerBizDetails,
+        });
         toast({
-          title: 'Application Received',
+          title: 'Application Received!',
           description: 'Our team will review your dealership application and contact you soon.',
         });
-        (e.target as HTMLFormElement).reset();
+        setDealerBusinessName('');
+        setDealerContactPerson('');
+        setDealerEmail('');
         setDealerPhone('');
-      }, 1500);
+        setDealerLocation('');
+        setDealerBizDetails('');
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'Submission Failed',
+          description: 'Something went wrong. Please try again or contact us directly.',
+        });
+      } finally {
+        setIsSubmittingDealer(false);
+      }
     }
   };
 
@@ -293,30 +318,55 @@ export default function ContactPage() {
                 <form onSubmit={(e) => handleSubmit(e, 'dealer')} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label>Business Name</Label>
-                      <Input placeholder="Revopz Dealer Store" required className="h-12 bg-muted/30" />
+                      <Label htmlFor="dealer-business-name">Business Name</Label>
+                      <Input
+                        id="dealer-business-name"
+                        placeholder="Revopz Dealer Store"
+                        required
+                        value={dealerBusinessName}
+                        onChange={(e) => setDealerBusinessName(e.target.value)}
+                        className="h-12 bg-muted/30"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label>Contact Person</Label>
-                      <Input placeholder="Jane Doe" required className="h-12 bg-muted/30" />
+                      <Label htmlFor="dealer-contact-person">Contact Person</Label>
+                      <Input
+                        id="dealer-contact-person"
+                        placeholder="Jane Doe"
+                        required
+                        value={dealerContactPerson}
+                        onChange={(e) => setDealerContactPerson(e.target.value)}
+                        className="h-12 bg-muted/30"
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label>Email Address</Label>
-                      <Input type="email" placeholder="jane@example.com" required className="h-12 bg-muted/30" />
+                      <Label htmlFor="dealer-email">Email Address</Label>
+                      <Input
+                        id="dealer-email"
+                        type="email"
+                        placeholder="jane@example.com"
+                        required
+                        value={dealerEmail}
+                        onChange={(e) => setDealerEmail(e.target.value)}
+                        className="h-12 bg-muted/30"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label className={cn(dealerPhoneError && "text-destructive")}>Phone Number</Label>
+                      <Label htmlFor="dealer-phone" className={cn(dealerPhoneError && 'text-destructive')}>
+                        Phone Number
+                      </Label>
                       <Input
+                        id="dealer-phone"
                         type="tel"
                         placeholder="+91 98765 43210"
                         required
                         value={dealerPhone}
                         onChange={(e) => handlePhoneChange(e, 'dealer')}
                         className={cn(
-                          "h-12 bg-muted/30 transition-colors",
-                          dealerPhoneError && "border-destructive focus-visible:ring-destructive"
+                          'h-12 bg-muted/30 transition-colors',
+                          dealerPhoneError && 'border-destructive focus-visible:ring-destructive'
                         )}
                       />
                       {dealerPhoneError && (
@@ -327,14 +377,33 @@ export default function ContactPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Location / City</Label>
-                    <Input placeholder="Cochin, Kerala" required className="h-12 bg-muted/30" />
+                    <Label htmlFor="dealer-location">Location / City</Label>
+                    <Input
+                      id="dealer-location"
+                      placeholder="Cochin, Kerala"
+                      required
+                      value={dealerLocation}
+                      onChange={(e) => setDealerLocation(e.target.value)}
+                      className="h-12 bg-muted/30"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Current Business Details</Label>
-                    <Textarea placeholder="Tell us about your current business and reach..." required className="min-h-[120px] bg-muted/30" />
+                    <Label htmlFor="dealer-biz-details">Current Business Details</Label>
+                    <Textarea
+                      id="dealer-biz-details"
+                      placeholder="Tell us about your current business and reach..."
+                      required
+                      value={dealerBizDetails}
+                      onChange={(e) => setDealerBizDetails(e.target.value)}
+                      className="min-h-[120px] bg-muted/30"
+                    />
                   </div>
-                  <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 py-6" disabled={isSubmittingDealer}>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full bg-accent hover:bg-accent/90 py-6"
+                    disabled={isSubmittingDealer}
+                  >
                     {isSubmittingDealer ? <Loader2 className="animate-spin" /> : 'Apply for Dealership'}
                   </Button>
                 </form>
