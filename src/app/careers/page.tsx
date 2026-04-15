@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Briefcase, Mail, MapPin, Clock, Loader2 } from 'lucide-react';
+import { Briefcase, Mail, MapPin, Clock, Loader2, Info, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Job, INITIAL_JOBS } from '@/lib/jobs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -31,10 +31,10 @@ export default function CareersPage() {
   const handleApplySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsApplying(true);
-    
+
     const form = e.currentTarget;
     const formData = new FormData(form);
-    
+
     const newApp: JobApplication = {
       id: Math.random().toString(36).substr(2, 9),
       applicantName: formData.get('name') as string,
@@ -82,7 +82,7 @@ export default function CareersPage() {
         {/* Main Content */}
         <div className="prose prose-invert max-w-none text-center mb-16">
           <p className="text-xl text-foreground/80 leading-relaxed max-w-[800px] mx-auto">
-            We are always looking for passionate and talented individuals who want to contribute to the future of energy. 
+            We are always looking for passionate and talented individuals who want to contribute to the future of energy.
             At REVOPZ, we value innovation, reliability, and a commitment to excellence.
           </p>
         </div>
@@ -130,7 +130,7 @@ export default function CareersPage() {
               <div className="space-y-4 text-muted-foreground max-w-[600px] mx-auto">
                 <p>We currently do not have any open positions.</p>
                 <p>
-                  However, we are always interested in connecting with skilled professionals. 
+                  However, we are always interested in connecting with skilled professionals.
                   Feel free to reach out to us, and we will get in touch when suitable opportunities arise.
                 </p>
               </div>
@@ -159,14 +159,27 @@ export default function CareersPage() {
         </div>
       </div>
 
-      {/* Application Modal */}
+      {/* Application Modal — DialogContent is the scroll container */}
       <Dialog open={isApplyModalOpen} onOpenChange={setIsApplyModalOpen}>
-        <DialogContent className="bg-card">
-          <DialogHeader>
+        <DialogContent
+          className="bg-card p-0 gap-0 w-full max-w-lg"
+          style={{
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'hsl(var(--primary) / 0.35) transparent',
+          }}
+        >
+          {/* ── Sticky Header ── */}
+          <DialogHeader className="sticky top-0 z-20 bg-card px-6 pt-6 pb-4 border-b border-border/50">
             <DialogTitle className="text-2xl font-headline">Apply for {selectedJob?.title}</DialogTitle>
-            <DialogDescription>Submit your details and we will get in touch shortly.</DialogDescription>
+            <DialogDescription className="mt-1">
+              We review every application carefully and will contact shortlisted candidates.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleApplySubmit} className="space-y-4 py-4">
+
+          {/* ── Scrollable Form Body ── */}
+          <form id="apply-form" onSubmit={handleApplySubmit} className="px-6 pt-5 pb-0 space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Full Name</Label>
               <Input id="name" name="name" placeholder="John Doe" required className="bg-muted/50" />
@@ -183,14 +196,33 @@ export default function CareersPage() {
               <Label htmlFor="message">Message / Cover Letter</Label>
               <Textarea id="message" name="message" placeholder="Tell us why you're a good fit..." required className="bg-muted/50 min-h-[100px]" />
             </div>
-            <DialogFooter className="pt-4">
-              <Button type="button" variant="ghost" onClick={() => setIsApplyModalOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isApplying}>
-                {isApplying ? <Loader2 className="animate-spin mr-2" /> : null}
-                {isApplying ? 'Submitting...' : 'Submit Application'}
-              </Button>
-            </DialogFooter>
+
+            {/* Info Note */}
+            <div className="flex items-start gap-2.5 rounded-lg bg-muted/40 border border-border/60 px-4 py-3">
+              <Info size={15} className="text-muted-foreground mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-medium text-foreground/70">Note:</span> You are not required to upload a resume at this stage. Our team will review your details and reach out to you if your profile matches our requirements.
+              </p>
+            </div>
+
+            {/* Tip Disclaimer */}
+            <div className="flex items-start gap-2.5 rounded-lg bg-primary/5 border border-primary/15 px-4 py-3">
+              <Lightbulb size={15} className="text-primary/70 mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-medium text-primary/80">Tip:</span> A well-written cover letter explaining your experience and interest will increase your chances of being shortlisted.
+              </p>
+            </div>
           </form>
+
+          {/* ── Sticky Footer ── */}
+          <div className="sticky bottom-0 z-20 bg-card px-6 py-4 mt-4 border-t border-border/50 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-0 sm:space-x-2">
+            <Button type="button" variant="ghost" onClick={() => setIsApplyModalOpen(false)}>Cancel</Button>
+            <Button form="apply-form" type="submit" className="bg-primary hover:bg-primary/90" disabled={isApplying}>
+              {isApplying ? <Loader2 className="animate-spin mr-2" /> : null}
+              {isApplying ? 'Submitting...' : 'Submit Application'}
+            </Button>
+          </div>
+
         </DialogContent>
       </Dialog>
     </div>
