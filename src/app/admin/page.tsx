@@ -7,15 +7,15 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { 
-  LayoutDashboard, 
-  Package, 
-  ShieldCheck, 
-  UserCircle, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  Package,
+  ShieldCheck,
+  UserCircle,
+  Plus,
+  Edit,
+  Trash2,
+  LogOut,
   CheckCircle2,
   X,
   Upload,
@@ -49,7 +49,7 @@ export default function AdminPage() {
   const { toast } = useToast();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
-  
+
   // Login State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -141,25 +141,25 @@ export default function AdminPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="admin@revopz.com" 
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="admin@revopz.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required 
+                  required
                   className="bg-background"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="••••••••" 
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required 
+                  required
                   className="bg-background"
                 />
               </div>
@@ -184,34 +184,34 @@ export default function AdminPage() {
           </div>
           <span className="font-headline font-bold text-lg tracking-tight">REVOPZ Admin</span>
         </div>
-        
+
         <nav className="flex-1 p-4 space-y-2">
-          <SidebarButton 
-            active={activeTab === 'profile'} 
+          <SidebarButton
+            active={activeTab === 'profile'}
             onClick={() => setActiveTab('profile')}
             icon={<UserCircle size={20} />}
             label="Admin Profile"
           />
-          <SidebarButton 
-            active={activeTab === 'products'} 
+          <SidebarButton
+            active={activeTab === 'products'}
             onClick={() => setActiveTab('products')}
             icon={<Package size={20} />}
             label="Product Mgmt"
           />
-          <SidebarButton 
-            active={activeTab === 'warranty'} 
+          <SidebarButton
+            active={activeTab === 'warranty'}
             onClick={() => setActiveTab('warranty')}
             icon={<ShieldCheck size={20} />}
             label="Warranty Mgmt"
           />
-          <SidebarButton 
-            active={activeTab === 'careers'} 
+          <SidebarButton
+            active={activeTab === 'careers'}
             onClick={() => setActiveTab('careers')}
             icon={<Briefcase size={20} />}
             label="Career Mgmt"
           />
-          <SidebarButton 
-            active={activeTab === 'applications'} 
+          <SidebarButton
+            active={activeTab === 'applications'}
             onClick={() => setActiveTab('applications')}
             icon={<FileText size={20} />}
             label="Applications"
@@ -231,14 +231,14 @@ export default function AdminPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold font-headline capitalize">
-                {activeTab === 'profile' ? 'Profile Management' : 
-                 activeTab === 'products' ? 'Product Catalog' : 
-                 activeTab === 'warranty' ? 'Warranty Registry' : 
-                 activeTab === 'careers' ? 'Career Management' : 'Job Applications'}
+                {activeTab === 'profile' ? 'Profile Management' :
+                  activeTab === 'products' ? 'Product Catalog' :
+                    activeTab === 'warranty' ? 'Warranty Registry' :
+                      activeTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">Manage your REVOPZ system operations and data.</p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <div className="hidden md:flex flex-col items-end">
                 <span className="font-bold text-sm">Amal Raj T P</span>
@@ -267,11 +267,10 @@ function SidebarButton({ active, onClick, icon, label }: { active: boolean, onCl
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-        active 
-          ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      }`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${active
+        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        }`}
     >
       {icon}
       {label}
@@ -399,93 +398,166 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
   );
 }
 
+// ── ProductSection ─────────────────────────────────────────────────────────
+
+type ProductFormData = {
+  name: string;
+  category: string;
+  powerRating: string;
+  shortDescription: string;
+  image: string;
+};
+
+type ProductErrors = Partial<Record<keyof ProductFormData, string>>;
+
+const EMPTY_PRODUCT_FORM: ProductFormData = {
+  name: '',
+  category: '',
+  powerRating: '',
+  shortDescription: '',
+  image: '',
+};
+
 function ProductSection({ products, setProducts }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>> }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [formData, setFormData] = useState<Partial<Product>>({
-    name: '',
-    category: 'inverters',
-    powerRating: '',
-    shortDescription: '',
-    fullDescription: '',
-    image: '',
-    features: [],
-    specs: {},
-    idealFor: []
-  });
+
+  const [formData, setFormData] = useState<ProductFormData>(EMPTY_PRODUCT_FORM);
+  const [errors, setErrors] = useState<ProductErrors>({});
+
+  // ── Validation ───────────────────────────────────────────────────────────
+  const validate = (data: ProductFormData): ProductErrors => {
+    const e: ProductErrors = {};
+    if (!data.name.trim()) e.name = 'Please enter a product name';
+    if (!data.category) e.category = 'Please select a category';
+    if (!data.powerRating.trim()) e.powerRating = 'Please enter a power rating';
+    if (!data.shortDescription.trim()) e.shortDescription = 'Please enter a short description';
+    if (!data.image) e.image = 'Please select a product image';
+    return e;
+  };
+
+  const isFormValid = Object.keys(validate(formData)).length === 0;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const resetForm = () => {
+    setFormData(EMPTY_PRODUCT_FORM);
+    setErrors({});
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleFieldChange = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) => {
+    const updated = { ...formData, [key]: value };
+    setFormData(updated);
+    // Clear the error for this field on change
+    if (errors[key]) setErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, image: reader.result as string }));
+        handleFieldChange('image', reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
   const removeImage = () => {
-    setFormData(prev => ({ ...prev, image: '' }));
+    handleFieldChange('image', '');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ── Dialog open/close ────────────────────────────────────────────────────
   const openAddDialog = () => {
     setEditingProduct(null);
-    setFormData({
-      name: '',
-      category: 'inverters',
-      powerRating: '',
-      shortDescription: '',
-      fullDescription: '',
-      image: '',
-      features: [],
-      specs: {},
-      idealFor: []
-    });
+    resetForm();
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (product: Product) => {
     setEditingProduct(product);
-    setFormData({ ...product });
+    setFormData({
+      name: product.name,
+      category: product.category,
+      powerRating: product.powerRating,
+      shortDescription: product.shortDescription,
+      image: product.image,
+    });
+    setErrors({});
     setIsDialogOpen(true);
   };
 
+  const handleCancel = () => {
+    resetForm();
+    setIsDialogOpen(false);
+  };
+
+  // ── Delete ───────────────────────────────────────────────────────────────
   const handleDelete = (id: string) => {
     setProducts(products.filter(p => p.id !== id));
     toast({ title: "Product Deleted", description: "The product has been removed from the catalog." });
   };
 
+  // ── Save ─────────────────────────────────────────────────────────────────
   const handleSaveProduct = () => {
-    if (!formData.name) return;
+    const validationErrors = validate(formData);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
 
     if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? { ...editingProduct, ...formData } as Product : p));
+      setProducts(products.map(p =>
+        p.id === editingProduct.id
+          ? {
+            ...editingProduct,
+            name: formData.name,
+            category: formData.category as any,
+            powerRating: formData.powerRating,
+            shortDescription: formData.shortDescription,
+            image: formData.image,
+          }
+          : p
+      ));
       toast({ title: "Product Updated", description: `${formData.name} has been updated.` });
     } else {
       const newProduct: Product = {
         id: Math.random().toString(36).substr(2, 9),
-        slug: (formData.name || '').toLowerCase().replace(/\s+/g, '-'),
-        name: formData.name || '',
-        category: (formData.category as any) || 'inverters',
-        powerRating: formData.powerRating || '',
-        shortDescription: formData.shortDescription || '',
-        fullDescription: formData.fullDescription || '',
-        features: formData.features || [],
-        specs: formData.specs || {},
-        idealFor: formData.idealFor || [],
-        image: formData.image || 'https://picsum.photos/seed/default/600/400'
+        slug: formData.name.toLowerCase().replace(/\s+/g, '-'),
+        name: formData.name,
+        category: formData.category as any,
+        powerRating: formData.powerRating,
+        shortDescription: formData.shortDescription,
+        fullDescription: '',
+        features: [],
+        specs: {},
+        idealFor: [],
+        image: formData.image,
       };
-      setProducts([...products, newProduct]);
-      toast({ title: "Product Added", description: `${newProduct.name} is now live.` });
+      setProducts(prev => [...prev, newProduct]);
+      alert('Product saved successfully');
     }
+
+    resetForm();
     setIsDialogOpen(false);
   };
 
+  // ── Inline error helper ───────────────────────────────────────────────────
+  const FieldError = ({ field }: { field: keyof ProductErrors }) =>
+    errors[field] ? (
+      <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+        <AlertTriangle size={11} />
+        {errors[field]}
+      </p>
+    ) : null;
+
+  const inputBorder = (field: keyof ProductErrors) =>
+    errors[field] ? 'border-destructive focus-visible:ring-destructive/30' : '';
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -497,83 +569,152 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
           <Plus size={16} className="mr-2" /> Add Product
         </Button>
       </CardHeader>
-      
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+      {/* ── Add / Edit Dialog ── */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
         <DialogContent className="max-w-2xl bg-card max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
             <DialogDescription>Fill in the details to list a new energy system.</DialogDescription>
           </DialogHeader>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Product Name</Label>
-              <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Lithium Pro 5kVA" />
+
+            {/* Product Name */}
+            <div className="space-y-1">
+              <Label htmlFor="prod-name">Product Name</Label>
+              <Input
+                id="prod-name"
+                value={formData.name}
+                onChange={(e) => handleFieldChange('name', e.target.value)}
+                placeholder="e.g. Lithium Pro 5kVA"
+                className={inputBorder('name')}
+              />
+              <FieldError field="name" />
             </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={formData.category} onValueChange={(v: any) => setFormData({...formData, category: v})}>
-                <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="inverters">Lithium Inverters</SelectItem>
-                  <SelectItem value="batteries">Lithium Batteries</SelectItem>
-                  <SelectItem value="systems">All-in-One Systems</SelectItem>
-                </SelectContent>
-              </Select>
+
+            {/* Category — native <select> */}
+            <div className="space-y-1">
+              <Label htmlFor="prod-category">Category</Label>
+              <select
+                id="prod-category"
+                value={formData.category}
+                onChange={(e) => handleFieldChange('category', e.target.value)}
+                className={[
+                  'flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm',
+                  'ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+                  'transition-colors',
+                  errors.category
+                    ? 'border-destructive focus:ring-destructive/30'
+                    : 'border-input',
+                ].join(' ')}
+              >
+                <option value="" disabled>Select Category</option>
+                <option value="inverters">Inverters</option>
+                <option value="batteries">Batteries</option>
+                <option value="systems">All-in-One</option>
+              </select>
+              <FieldError field="category" />
             </div>
-            <div className="space-y-2">
-              <Label>Power Rating</Label>
-              <Input value={formData.powerRating} onChange={(e) => setFormData({...formData, powerRating: e.target.value})} placeholder="e.g. 5000VA / 4000W" />
+
+            {/* Power Rating */}
+            <div className="space-y-1">
+              <Label htmlFor="prod-power">Power Rating</Label>
+              <Input
+                id="prod-power"
+                value={formData.powerRating}
+                onChange={(e) => handleFieldChange('powerRating', e.target.value)}
+                placeholder="e.g. 5000VA / 4000W"
+                className={inputBorder('powerRating')}
+              />
+              <FieldError field="powerRating" />
             </div>
-            <div className="space-y-2 col-span-1 md:col-span-2">
-              <Label>Short Description</Label>
-              <Textarea value={formData.shortDescription} onChange={(e) => setFormData({...formData, shortDescription: e.target.value})} placeholder="Brief hook for listing pages..." />
+
+            {/* Short Description */}
+            <div className="space-y-1 col-span-1 md:col-span-2">
+              <Label htmlFor="prod-desc">Short Description</Label>
+              <Textarea
+                id="prod-desc"
+                value={formData.shortDescription}
+                onChange={(e) => handleFieldChange('shortDescription', e.target.value)}
+                placeholder="Brief hook for listing pages..."
+                className={inputBorder('shortDescription')}
+              />
+              <FieldError field="shortDescription" />
             </div>
-            
-            <div className="space-y-2 col-span-1 md:col-span-2">
+
+            {/* Product Image */}
+            <div className="space-y-1 col-span-1 md:col-span-2">
               <Label>Product Image</Label>
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <Input 
-                    type="file" 
-                    accept="image/jpeg,image/png,image/webp" 
-                    className="hidden" 
-                    ref={fileInputRef}
-                    onChange={handleImageChange}
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+              <div className="flex flex-col gap-3">
+                {/* Hidden file input */}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleImageChange}
+                />
+
+                {/* Upload trigger */}
+                {!formData.image && (
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 border-dashed border-2 py-8 flex flex-col gap-2"
+                    className={[
+                      'flex flex-col items-center justify-center gap-2 w-full py-8 rounded-md border-2 border-dashed',
+                      'text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer',
+                      errors.image ? 'border-destructive' : 'border-border',
+                    ].join(' ')}
                   >
-                    <Upload size={20} />
-                    <span>Click to Upload Image</span>
-                  </Button>
-                </div>
-                
+                    <Upload size={22} />
+                    <span className="text-sm">Click to upload image</span>
+                    <span className="text-xs opacity-60">JPG, PNG, WEBP supported</span>
+                  </button>
+                )}
+
+                {/* Preview + remove */}
                 {formData.image && (
                   <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-primary/20 bg-muted/20">
                     <img src={formData.image} alt="Preview" className="w-full h-full object-cover" />
-                    <Button 
-                      variant="destructive" 
-                      size="icon" 
-                      className="absolute top-2 right-2 h-8 w-8 rounded-full"
-                      onClick={removeImage}
-                    >
-                      <X size={16} />
-                    </Button>
+                    <div className="absolute top-2 right-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs bg-background/80 backdrop-blur-sm border border-border px-2 py-1 rounded-md hover:bg-background transition-colors"
+                      >
+                        Change
+                      </button>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-xs"
+                        onClick={removeImage}
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
                   </div>
                 )}
+                <FieldError field="image" />
               </div>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveProduct}>{editingProduct ? 'Update Product' : 'Save Product'}</Button>
+            <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+            <Button
+              onClick={handleSaveProduct}
+              disabled={!isFormValid}
+              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {editingProduct ? 'Update Product' : 'Save Product'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* ── Product Table ── */}
       <CardContent>
         <Table>
           <TableHeader>
@@ -613,7 +754,7 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
                         <AlertDialogHeader>
                           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will permanently delete the product "{product.name}" from the system catalog.
+                            This will permanently delete the product &quot;{product.name}&quot; from the system catalog.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -637,7 +778,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
   const { toast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
-  
+
   const [formData, setFormData] = useState<Partial<WarrantyEntry>>({
     serialNumber: '',
     productName: '',
@@ -718,11 +859,11 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Serial Number</Label>
-                  <Input value={formData.serialNumber} onChange={(e) => setFormData({...formData, serialNumber: e.target.value})} placeholder="RV-1K-001" className="uppercase" />
+                  <Input value={formData.serialNumber} onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })} placeholder="RV-1K-001" className="uppercase" />
                 </div>
                 <div className="space-y-2">
                   <Label>Product</Label>
-                  <Select onValueChange={(v) => setFormData({...formData, productName: v})}>
+                  <Select onValueChange={(v) => setFormData({ ...formData, productName: v })}>
                     <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
                     <SelectContent className="bg-popover">
                       {products.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
@@ -732,21 +873,21 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
               </div>
               <div className="space-y-2">
                 <Label>Customer Name</Label>
-                <Input value={formData.customerName} onChange={(e) => setFormData({...formData, customerName: e.target.value})} placeholder="John Doe" />
+                <Input value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} placeholder="John Doe" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Phone</Label>
-                  <Input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="+91..." />
+                  <Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+91..." />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="john@example.com" />
+                  <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="john@example.com" />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Purchase Date</Label>
-                <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})} />
+                <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
               </div>
             </div>
             <DialogFooter>
@@ -804,7 +945,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
                                 <p className="font-bold text-primary">Expires: {selectedWarranty.expiryDate}</p>
                               </div>
                             </div>
-                            
+
                             {selectedWarranty.claimMessage && (
                               <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20 space-y-2">
                                 <Label className="text-xs text-orange-500 font-bold uppercase flex items-center gap-2">
@@ -831,7 +972,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
                         )}
                       </DialogContent>
                     </Dialog>
-                    
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
@@ -862,7 +1003,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
-  
+
   const [formData, setFormData] = useState<Partial<Job>>({
     title: '',
     location: '',
@@ -926,7 +1067,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
           <Plus size={16} className="mr-2" /> Add Job
         </Button>
       </CardHeader>
-      
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="bg-card">
           <DialogHeader>
@@ -936,15 +1077,15 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Job Title</Label>
-              <Input value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} placeholder="e.g. Sales Manager" />
+              <Input value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="e.g. Sales Manager" />
             </div>
             <div className="space-y-2">
               <Label>Location</Label>
-              <Input value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="e.g. Palakkad, Kerala" />
+              <Input value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="e.g. Palakkad, Kerala" />
             </div>
             <div className="space-y-2">
               <Label>Job Type</Label>
-              <Select value={formData.type} onValueChange={(v: any) => setFormData({...formData, type: v})}>
+              <Select value={formData.type} onValueChange={(v: any) => setFormData({ ...formData, type: v })}>
                 <SelectTrigger><SelectValue placeholder="Select Type" /></SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="Full-time">Full-time</SelectItem>
@@ -955,7 +1096,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
             </div>
             <div className="space-y-2">
               <Label>Short Description</Label>
-              <Textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Brief overview of the role..." />
+              <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Brief overview of the role..." />
             </div>
           </div>
           <DialogFooter>
@@ -1024,8 +1165,8 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
 
   const filteredApps = useMemo(() => {
     return applications.filter(app => {
-      const matchesSearch = app.applicantName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            app.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = app.applicantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        app.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -1064,9 +1205,9 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-              <Input 
-                placeholder="Search by name or job..." 
-                className="pl-10" 
+              <Input
+                placeholder="Search by name or job..."
+                className="pl-10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1148,8 +1289,8 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
                               </div>
                               <div className="space-y-2">
                                 <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
-                                <Select 
-                                  defaultValue={selectedApp.status} 
+                                <Select
+                                  defaultValue={selectedApp.status}
                                   onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
                                 >
                                   <SelectTrigger className="w-full">
