@@ -39,9 +39,33 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-[1100] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg focus:outline-none",
+        // ── Base: centered on md+ ───────────────────────────────────────────
+        "fixed z-[1100] grid w-full gap-4 border bg-background shadow-lg",
+        "focus:outline-none",
+        // ── Height cap + scroll (works on all screen sizes) ────────────────
+        "max-h-[90svh] overflow-y-auto",
+        // -webkit-overflow-scrolling applied via inline style below
+        // ── Desktop: centered (md and above) ───────────────────────────────
+        "md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%]",
+        "md:max-w-lg md:rounded-lg md:p-6",
+        // ── Desktop animations ──────────────────────────────────────────────
+        "md:data-[state=open]:animate-in md:data-[state=closed]:animate-out",
+        "md:data-[state=closed]:fade-out-0 md:data-[state=open]:fade-in-0",
+        "md:data-[state=closed]:zoom-out-95 md:data-[state=open]:zoom-in-95",
+        "md:data-[state=closed]:slide-out-to-left-1/2 md:data-[state=closed]:slide-out-to-top-[48%]",
+        "md:data-[state=open]:slide-in-from-left-1/2 md:data-[state=open]:slide-in-from-top-[48%]",
+        // ── Mobile: bottom-sheet (below md) ────────────────────────────────
+        "max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:top-auto",
+        "max-md:w-full max-md:max-w-full max-md:max-h-[88svh]",
+        "max-md:rounded-t-2xl max-md:rounded-b-none max-md:p-5 max-md:pb-8",
+        // Mobile slide-up animation
+        "max-md:data-[state=open]:animate-in max-md:data-[state=closed]:animate-out",
+        "max-md:data-[state=closed]:fade-out-0 max-md:data-[state=open]:fade-in-0",
+        "max-md:data-[state=closed]:slide-out-to-bottom max-md:data-[state=open]:slide-in-from-bottom",
+        "duration-300",
         className
       )}
+      style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
       {...props}
     >
       {children}
