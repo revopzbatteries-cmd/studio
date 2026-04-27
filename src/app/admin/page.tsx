@@ -18,7 +18,6 @@ import {
   LogOut,
   CheckCircle2,
   X,
-  Upload,
   ImageIcon,
   Briefcase,
   FileText,
@@ -36,6 +35,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { ProductForm } from './components/ProductForm';
+import type { AdminProduct } from './types';
 
 // Types
 type AdminUser = {
@@ -398,172 +399,97 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
   );
 }
 
-// ── ProductSection ─────────────────────────────────────────────────────────
+// ── Helpers: convert between library Product type and AdminProduct form type ─
 
-type ProductFormData = {
-  name: string;
-  category: string;
-  powerRating: string;
-  shortDescription: string;
-  image: string;
-};
+function productToAdminProduct(p: Product): AdminProduct {
+  const specsArray = Object.entries(p.specs).map(([key, value]) => ({ key, value }));
+  return {
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    powerRating: p.powerRating,
+    description: p.shortDescription,
+    image: p.image,
+    performance: p.performance ?? [],
+    features: p.features,
+    safety: p.safety ?? [],
+    idealFor: p.idealFor,
+    specifications: specsArray,
+    warranty: p.warranty ?? '',
+    installation: p.installation ?? '',
+  };
+}
 
-type ProductErrors = Partial<Record<keyof ProductFormData, string>>;
+function adminProductToProduct(ap: AdminProduct, existingProduct?: Product): Product {
+  const specs: Record<string, string> = {};
+  ap.specifications.forEach(s => { if (s.key.trim()) specs[s.key.trim()] = s.value; });
+  return {
+    id: ap.id || Math.random().toString(36).substr(2, 9),
+    slug: existingProduct?.slug ?? ap.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+    name: ap.name,
+    category: ap.category,
+    powerRating: ap.powerRating,
+    shortDescription: ap.description,
+    fullDescription: existingProduct?.fullDescription ?? '',
+    performance: ap.performance,
+    features: ap.features,
+    safety: ap.safety,
+    specs,
+    idealFor: ap.idealFor,
+    image: ap.image,
+    warranty: ap.warranty || undefined,
+    installation: ap.installation || undefined,
+  };
+}
 
-const EMPTY_PRODUCT_FORM: ProductFormData = {
-  name: '',
-  category: '',
-  powerRating: '',
-  shortDescription: '',
-  image: '',
-};
+// ── ProductSection ───────────────────────────────────────────────────────────
 
 function ProductSection({ products, setProducts }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>> }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData] = useState<ProductFormData>(EMPTY_PRODUCT_FORM);
-  const [errors, setErrors] = useState<ProductErrors>({});
-
-  // ── Validation ───────────────────────────────────────────────────────────
-  const validate = (data: ProductFormData): ProductErrors => {
-    const e: ProductErrors = {};
-    if (!data.name.trim()) e.name = 'Please enter a product name';
-    if (!data.category) e.category = 'Please select a category';
-    if (!data.powerRating.trim()) e.powerRating = 'Please enter a power rating';
-    if (!data.shortDescription.trim()) e.shortDescription = 'Please enter a short description';
-    if (!data.image) e.image = 'Please select a product image';
-    return e;
-  };
-
-  const isFormValid = Object.keys(validate(formData)).length === 0;
-
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  const resetForm = () => {
-    setFormData(EMPTY_PRODUCT_FORM);
-    setErrors({});
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleFieldChange = <K extends keyof ProductFormData>(key: K, value: ProductFormData[K]) => {
-    const updated = { ...formData, [key]: value };
-    setFormData(updated);
-    // Clear the error for this field on change
-    if (errors[key]) setErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleFieldChange('image', reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeImage = () => {
-    handleFieldChange('image', '');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  // ── Dialog open/close ────────────────────────────────────────────────────
   const openAddDialog = () => {
     setEditingProduct(null);
-    resetForm();
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (product: Product) => {
     setEditingProduct(product);
-    setFormData({
-      name: product.name,
-      category: product.category,
-      powerRating: product.powerRating,
-      shortDescription: product.shortDescription,
-      image: product.image,
-    });
-    setErrors({});
     setIsDialogOpen(true);
   };
 
-  const handleCancel = () => {
-    resetForm();
-    setIsDialogOpen(false);
-  };
+  const handleCancel = () => setIsDialogOpen(false);
 
-  // ── Delete ───────────────────────────────────────────────────────────────
   const handleDelete = (id: string) => {
-    setProducts(products.filter(p => p.id !== id));
-    toast({ title: "Product Deleted", description: "The product has been removed from the catalog." });
+    setProducts(prev => prev.filter(p => p.id !== id));
+    toast({ title: 'Product Deleted', description: 'The product has been removed from the catalog.' });
   };
 
-  // ── Save ─────────────────────────────────────────────────────────────────
-  const handleSaveProduct = () => {
-    const validationErrors = validate(formData);
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
+  const handleSave = (adminProduct: AdminProduct) => {
     if (editingProduct) {
-      setProducts(products.map(p =>
-        p.id === editingProduct.id
-          ? {
-            ...editingProduct,
-            name: formData.name,
-            category: formData.category as any,
-            powerRating: formData.powerRating,
-            shortDescription: formData.shortDescription,
-            image: formData.image,
-          }
-          : p
-      ));
-      toast({ title: "Product Updated", description: `${formData.name} has been updated.` });
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === editingProduct.id
+            ? adminProductToProduct(adminProduct, editingProduct)
+            : p
+        )
+      );
+      toast({ title: 'Product Updated', description: `"${adminProduct.name}" has been updated successfully.` });
     } else {
-      const newProduct: Product = {
-        id: Math.random().toString(36).substr(2, 9),
-        slug: formData.name.toLowerCase().replace(/\s+/g, '-'),
-        name: formData.name,
-        category: formData.category as any,
-        powerRating: formData.powerRating,
-        shortDescription: formData.shortDescription,
-        fullDescription: '',
-        features: [],
-        specs: {},
-        idealFor: [],
-        image: formData.image,
-      };
+      const newProduct = adminProductToProduct(adminProduct);
       setProducts(prev => [...prev, newProduct]);
-      alert('Product saved successfully');
+      toast({ title: 'Product Added', description: `"${adminProduct.name}" has been added to the catalog.` });
     }
-
-    resetForm();
     setIsDialogOpen(false);
   };
 
-  // ── Inline error helper ───────────────────────────────────────────────────
-  const FieldError = ({ field }: { field: keyof ProductErrors }) =>
-    errors[field] ? (
-      <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-        <AlertTriangle size={11} />
-        {errors[field]}
-      </p>
-    ) : null;
-
-  const inputBorder = (field: keyof ProductErrors) =>
-    errors[field] ? 'border-destructive focus-visible:ring-destructive/30' : '';
-
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-lg">Product Catalog</CardTitle>
-          <CardDescription>Update descriptions, specifications, and availability.</CardDescription>
+          <CardDescription>Create and manage your full product listings.</CardDescription>
         </div>
         <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
           <Plus size={16} className="mr-2" /> Add Product
@@ -572,145 +498,26 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
 
       {/* ── Add / Edit Dialog ── */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
-        <DialogContent className="max-w-2xl bg-card max-h-[90vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
-            <DialogDescription>Fill in the details to list a new energy system.</DialogDescription>
+        <DialogContent className="max-w-2xl bg-card max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-lg font-bold">
+              {editingProduct ? `Edit: ${editingProduct.name}` : 'Add New Product'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingProduct
+                ? 'Update all product details — changes are saved immediately to the catalog.'
+                : 'Fill in all sections to create a complete product listing.'}
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-
-            {/* Product Name */}
-            <div className="space-y-1">
-              <Label htmlFor="prod-name">Product Name</Label>
-              <Input
-                id="prod-name"
-                value={formData.name}
-                onChange={(e) => handleFieldChange('name', e.target.value)}
-                placeholder="e.g. Lithium Pro 5kVA"
-                className={inputBorder('name')}
-              />
-              <FieldError field="name" />
-            </div>
-
-            {/* Category — native <select> */}
-            <div className="space-y-1">
-              <Label htmlFor="prod-category">Category</Label>
-              <select
-                id="prod-category"
-                value={formData.category}
-                onChange={(e) => handleFieldChange('category', e.target.value)}
-                className={[
-                  'flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm',
-                  'ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                  'transition-colors',
-                  errors.category
-                    ? 'border-destructive focus:ring-destructive/30'
-                    : 'border-input',
-                ].join(' ')}
-              >
-                <option value="" disabled>Select Category</option>
-                <option value="inverters">Inverters</option>
-                <option value="batteries">Batteries</option>
-                <option value="systems">All-in-One</option>
-              </select>
-              <FieldError field="category" />
-            </div>
-
-            {/* Power Rating */}
-            <div className="space-y-1">
-              <Label htmlFor="prod-power">Power Rating</Label>
-              <Input
-                id="prod-power"
-                value={formData.powerRating}
-                onChange={(e) => handleFieldChange('powerRating', e.target.value)}
-                placeholder="e.g. 5000VA / 4000W"
-                className={inputBorder('powerRating')}
-              />
-              <FieldError field="powerRating" />
-            </div>
-
-            {/* Short Description */}
-            <div className="space-y-1 col-span-1 md:col-span-2">
-              <Label htmlFor="prod-desc">Short Description</Label>
-              <Textarea
-                id="prod-desc"
-                value={formData.shortDescription}
-                onChange={(e) => handleFieldChange('shortDescription', e.target.value)}
-                placeholder="Brief hook for listing pages..."
-                className={inputBorder('shortDescription')}
-              />
-              <FieldError field="shortDescription" />
-            </div>
-
-            {/* Product Image */}
-            <div className="space-y-1 col-span-1 md:col-span-2">
-              <Label>Product Image</Label>
-              <div className="flex flex-col gap-3">
-                {/* Hidden file input */}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleImageChange}
-                />
-
-                {/* Upload trigger */}
-                {!formData.image && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className={[
-                      'flex flex-col items-center justify-center gap-2 w-full py-8 rounded-md border-2 border-dashed',
-                      'text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer',
-                      errors.image ? 'border-destructive' : 'border-border',
-                    ].join(' ')}
-                  >
-                    <Upload size={22} />
-                    <span className="text-sm">Click to upload image</span>
-                    <span className="text-xs opacity-60">JPG, PNG, WEBP supported</span>
-                  </button>
-                )}
-
-                {/* Preview + remove */}
-                {formData.image && (
-                  <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-primary/20 bg-muted/20">
-                    <img src={formData.image} alt="Preview" className="w-full h-full object-cover" />
-                    <div className="absolute top-2 right-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-xs bg-background/80 backdrop-blur-sm border border-border px-2 py-1 rounded-md hover:bg-background transition-colors"
-                      >
-                        Change
-                      </button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="h-7 w-7 rounded-full text-xs"
-                        onClick={removeImage}
-                      >
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                <FieldError field="image" />
-              </div>
-            </div>
+          <div className="flex-1 overflow-hidden">
+            <ProductForm
+              key={editingProduct?.id ?? 'new'}
+              initialData={editingProduct ? productToAdminProduct(editingProduct) : undefined}
+              onSave={handleSave}
+              onCancel={handleCancel}
+            />
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-            <Button
-              onClick={handleSaveProduct}
-              disabled={!isFormValid}
-              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {editingProduct ? 'Update Product' : 'Save Product'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -752,9 +559,9 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-card">
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogTitle>Delete Product?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will permanently delete the product &quot;{product.name}&quot; from the system catalog.
+                            This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
