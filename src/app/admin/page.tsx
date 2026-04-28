@@ -583,45 +583,14 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
 
 function WarrantyManagementSection({ warranties, setWarranties, products }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[] }) {
   const { toast } = useToast();
-  const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const [formData, setFormData] = useState<Partial<WarrantyEntry>>({
-    serialNumber: '',
-    productName: '',
-    customerName: '',
-    phone: '',
-    email: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
-    expiryDate: '',
-    status: 'Active'
-  });
-
-  const handleAddWarranty = () => {
-    if (!formData.serialNumber || !formData.customerName) return;
-
-    // Auto-calculate expiry (default 24 months)
-    const purchaseDate = new Date(formData.purchaseDate || '');
-    const expiryDate = new Date(purchaseDate);
-    expiryDate.setFullYear(purchaseDate.getFullYear() + 2);
-
-    const entry: WarrantyEntry = {
-      id: Math.random().toString(36).substr(2, 9),
-      serialNumber: formData.serialNumber!.toUpperCase(),
-      productName: formData.productName || 'General Product',
-      customerName: formData.customerName!,
-      phone: formData.phone || '',
-      email: formData.email || '',
-      purchaseDate: formData.purchaseDate || '',
-      expiryDate: expiryDate.toISOString().split('T')[0],
-      status: (formData.status as WarrantyStatus) || 'Active'
-    };
-
-    setWarranties([entry, ...warranties]);
-    setIsAddOpen(false);
-    setFormData({ purchaseDate: new Date().toISOString().split('T')[0] });
-    toast({ title: "Warranty Registered", description: `Serial ${entry.serialNumber} is now active.` });
-  };
+  const filteredWarranties = useMemo(() => {
+    return warranties.filter((w) =>
+      w.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [warranties, searchTerm]);
 
   const handleUpdateStatus = (id: string, newStatus: WarrantyStatus) => {
     const updated = warranties.map(w => w.id === id ? { ...w, status: newStatus } : w);
@@ -653,55 +622,22 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
           <CardTitle className="text-lg">Warranty Registry</CardTitle>
           <CardDescription>Manage product serials and customer claims.</CardDescription>
         </div>
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-accent hover:bg-accent/90"><Plus size={16} className="mr-2" /> Register Warranty</Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card">
-            <DialogHeader>
-              <DialogTitle>Register New Warranty</DialogTitle>
-              <DialogDescription>Link a product serial to a customer.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Serial Number</Label>
-                  <Input value={formData.serialNumber} onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })} placeholder="RV-1K-001" className="uppercase" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Product</Label>
-                  <Select onValueChange={(v) => setFormData({ ...formData, productName: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                    <SelectContent className="bg-popover">
-                      {products.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Customer Name</Label>
-                <Input value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} placeholder="John Doe" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+91..." />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="john@example.com" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Purchase Date</Label>
-                <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleAddWarranty}>Confirm Registration</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              placeholder="Search by Serial No (e.g. RV-1K-001)"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-[280px] pl-9"
+            />
+          </div>
+          {searchTerm && (
+            <Button variant="ghost" onClick={() => setSearchTerm("")} className="px-3">
+              Clear
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
@@ -715,90 +651,98 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
             </TableRow>
           </TableHeader>
           <TableBody>
-            {warranties.map((w) => (
-              <TableRow key={w.id} className={w.status === 'Claim Requested' ? 'bg-orange-500/5' : ''}>
-                <TableCell className="font-mono font-bold text-primary">{w.serialNumber}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col">
-                    <span>{w.customerName}</span>
-                    <span className="text-xs text-muted-foreground">{w.phone}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-xs">{w.productName}</TableCell>
-                <TableCell>{getStatusBadge(w.status)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setSelectedWarranty(w)}><Eye size={16} /></Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-card">
-                        <DialogHeader>
-                          <DialogTitle>Warranty Details</DialogTitle>
-                          <DialogDescription>Full record for Serial: {selectedWarranty?.serialNumber}</DialogDescription>
-                        </DialogHeader>
-                        {selectedWarranty && (
-                          <div className="space-y-6 py-4">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
-                                <p className="font-bold">{selectedWarranty.customerName}</p>
-                                <p>{selectedWarranty.phone}</p>
-                                <p className="text-xs">{selectedWarranty.email}</p>
+            {filteredWarranties.length > 0 ? (
+              filteredWarranties.map((w) => (
+                <TableRow key={w.id} className={w.status === 'Claim Requested' ? 'bg-orange-500/5' : ''}>
+                  <TableCell className="font-mono font-bold text-primary">{w.serialNumber}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{w.customerName}</span>
+                      <span className="text-xs text-muted-foreground">{w.phone}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">{w.productName}</TableCell>
+                  <TableCell>{getStatusBadge(w.status)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedWarranty(w)}><Eye size={16} /></Button>
+                        </DialogTrigger>
+                        <DialogContent className="bg-card">
+                          <DialogHeader>
+                            <DialogTitle>Warranty Details</DialogTitle>
+                            <DialogDescription>Full record for Serial: {selectedWarranty?.serialNumber}</DialogDescription>
+                          </DialogHeader>
+                          {selectedWarranty && (
+                            <div className="space-y-6 py-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
+                                  <p className="font-bold">{selectedWarranty.customerName}</p>
+                                  <p>{selectedWarranty.phone}</p>
+                                  <p className="text-xs">{selectedWarranty.email}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase">Dates</Label>
+                                  <p>Purchased: {selectedWarranty.purchaseDate}</p>
+                                  <p className="font-bold text-primary">Expires: {selectedWarranty.expiryDate}</p>
+                                </div>
                               </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground uppercase">Dates</Label>
-                                <p>Purchased: {selectedWarranty.purchaseDate}</p>
-                                <p className="font-bold text-primary">Expires: {selectedWarranty.expiryDate}</p>
+
+                              {selectedWarranty.claimMessage && (
+                                <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20 space-y-2">
+                                  <Label className="text-xs text-orange-500 font-bold uppercase flex items-center gap-2">
+                                    <AlertTriangle size={14} /> Claim Issue Description
+                                  </Label>
+                                  <p className="text-sm italic">"{selectedWarranty.claimMessage}"</p>
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <Label>Update Status</Label>
+                                <Select defaultValue={selectedWarranty.status} onValueChange={(v: WarrantyStatus) => handleUpdateStatus(selectedWarranty.id, v)}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent className="bg-popover">
+                                    <SelectItem value="Active">Active</SelectItem>
+                                    <SelectItem value="Claim Requested">Claim Requested</SelectItem>
+                                    <SelectItem value="Claim Approved">Claim Approved</SelectItem>
+                                    <SelectItem value="Claim Rejected">Claim Rejected</SelectItem>
+                                    <SelectItem value="Expired">Expired</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
 
-                            {selectedWarranty.claimMessage && (
-                              <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20 space-y-2">
-                                <Label className="text-xs text-orange-500 font-bold uppercase flex items-center gap-2">
-                                  <AlertTriangle size={14} /> Claim Issue Description
-                                </Label>
-                                <p className="text-sm italic">"{selectedWarranty.claimMessage}"</p>
-                              </div>
-                            )}
-
-                            <div className="space-y-2">
-                              <Label>Update Status</Label>
-                              <Select defaultValue={selectedWarranty.status} onValueChange={(v: WarrantyStatus) => handleUpdateStatus(selectedWarranty.id, v)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent className="bg-popover">
-                                  <SelectItem value="Active">Active</SelectItem>
-                                  <SelectItem value="Claim Requested">Claim Requested</SelectItem>
-                                  <SelectItem value="Claim Approved">Claim Approved</SelectItem>
-                                  <SelectItem value="Claim Rejected">Claim Rejected</SelectItem>
-                                  <SelectItem value="Expired">Expired</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-                      </DialogContent>
-                    </Dialog>
-
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Warranty?</AlertDialogTitle>
-                          <AlertDialogDescription>Remove serial {w.serialNumber} from the registry.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(w.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Warranty?</AlertDialogTitle>
+                            <AlertDialogDescription>Remove serial {w.serialNumber} from the registry.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(w.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  No warranty records found
                 </TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       </CardContent>
