@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
   Package, User, Phone, Mail, MapPin, Tag, XCircle, ClipboardCheck,
-  ShieldOff, RefreshCw
+  ShieldOff, RefreshCw, CalendarDays, Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -516,6 +516,32 @@ export default function WarrantyPage() {
                 <ClipboardCheck size={14} className="inline mr-1" />Product Number
               </Label>
               <Input value={selectedProduct?.serial ?? ''} disabled className="bg-muted font-mono" />
+            </div>
+
+            {/* Warranty Valid Till (auto-calculated, read-only) */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1">
+                <CalendarDays size={14} className="inline" />
+                Warranty Valid Till
+                <Lock size={11} className="ml-0.5 text-muted-foreground opacity-70" />
+              </Label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={(() => {
+                    const d = new Date();
+                    d.setFullYear(d.getFullYear() + 5);
+                    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                  })()}
+                  readOnly
+                  tabIndex={-1}
+                  className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 select-none font-medium"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground/70 flex items-center gap-1 pt-0.5">
+                <Lock size={10} />
+                Auto-calculated based on standard 5-year warranty. Not editable.
+              </p>
             </div>
 
             <DialogFooter className="pt-4 flex gap-3 sticky bottom-0 bg-card pb-1">
