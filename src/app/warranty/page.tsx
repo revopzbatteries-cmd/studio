@@ -278,10 +278,10 @@ export default function WarrantyPage() {
               <>
                 {/* ── Product detail card ─────────────────────────────── */}
                 <Card className={`overflow-hidden border-2 transition-all duration-300 ${selectedProduct.warrantyStatus === 'active'
-                    ? 'border-green-500/30 bg-green-500/5'
-                    : selectedProduct.warrantyStatus === 'expired'
-                      ? 'border-red-500/30 bg-red-500/5'
-                      : 'border-amber-500/30 bg-amber-500/5'
+                  ? 'border-green-500/30 bg-green-500/5'
+                  : selectedProduct.warrantyStatus === 'expired'
+                    ? 'border-red-500/30 bg-red-500/5'
+                    : 'border-amber-500/30 bg-amber-500/5'
                   }`}>
                   <CardHeader className="border-b border-border/50 pb-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -331,18 +331,10 @@ export default function WarrantyPage() {
                     <div>
                       <h4 className="text-lg font-bold font-headline text-green-400">✅ Active Warranty Coverage</h4>
                       <p className="text-muted-foreground text-sm mt-1">
-                        Your product is covered. Facing an issue? Raise a complaint and we&apos;ll send a technician.
+                        Your product is covered.
                       </p>
                     </div>
-                    <Button
-                      className="bg-green-600 hover:bg-green-500 text-white font-bold px-8 py-6 h-auto text-base shrink-0"
-                      onClick={handleRaiseComplaint}
-                      disabled={isComplaintLoading}
-                    >
-                      {isComplaintLoading
-                        ? <><Loader2 size={18} className="animate-spin mr-2" /> Registering…</>
-                        : <><Phone size={18} className="mr-2" /> Raise Complaint</>}
-                    </Button>
+
                   </div>
                 )}
 
@@ -355,16 +347,10 @@ export default function WarrantyPage() {
                         <h4 className="text-lg font-bold font-headline text-red-400">Warranty Expired</h4>
                       </div>
                       <p className="text-muted-foreground text-sm">
-                        This product is no longer covered under warranty. You may contact support for paid service assistance.
+                        This product is no longer covered under warranty.
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="border-red-500/40 text-red-400 hover:bg-red-500/10 px-8 py-6 h-auto text-base shrink-0"
-                      onClick={handleContactSupport}
-                    >
-                      <Phone size={18} className="mr-2" /> Contact Support
-                    </Button>
+
                   </div>
                 )}
               </>
