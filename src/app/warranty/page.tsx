@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
   Package, User, Phone, Mail, MapPin, Tag, XCircle, ClipboardCheck,
-  ShieldOff, RefreshCw
+  ShieldOff, RefreshCw, CalendarDays, Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,17 @@ interface Product {
   model: string;
   category: string;
   warrantyStatus: WarrantyStatus;
+  purchaseDate?: string;
+  expiryDate?: string;
+}
+
+// ── Date formatter ────────────────────────────────────────────────────────────
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────
@@ -63,6 +74,7 @@ export default function WarrantyPage() {
       model: '1100VA / 12V',
       category: 'Inverter',
       warrantyStatus: 'not_registered',
+      purchaseDate: '2024-06-15',
     },
     {
       serial: 'RZ1350-002',
@@ -70,6 +82,8 @@ export default function WarrantyPage() {
       model: '1350VA / 12V',
       category: 'Inverter',
       warrantyStatus: 'active',
+      purchaseDate: '2024-01-10',
+      expiryDate: '2026-01-10',
     },
     {
       serial: 'RZ200AH-003',
@@ -77,6 +91,8 @@ export default function WarrantyPage() {
       model: '12V / 200Ah',
       category: 'Battery',
       warrantyStatus: 'expired',
+      purchaseDate: '2022-01-10',
+      expiryDate: '2024-01-10',
     },
   ]);
 
@@ -149,15 +165,24 @@ export default function WarrantyPage() {
 
     setIsRegistering(true);
     setTimeout(() => {
+      // Compute a 2-year expiry from today for newly registered products
+      const today = new Date();
+      const expiry = new Date(today);
+      expiry.setFullYear(expiry.getFullYear() + 2);
+      const purchaseDate = today.toISOString().split('T')[0];
+      const expiryDate = expiry.toISOString().split('T')[0];
+
       // Update state
       setProducts(prev =>
         prev.map(p =>
-          p.serial === selectedProduct.serial ? { ...p, warrantyStatus: 'active' } : p
+          p.serial === selectedProduct.serial
+            ? { ...p, warrantyStatus: 'active', purchaseDate, expiryDate }
+            : p
         )
       );
 
       // Reflect updated product in results immediately
-      setSelectedProduct({ ...selectedProduct, warrantyStatus: 'active' });
+      setSelectedProduct({ ...selectedProduct, warrantyStatus: 'active', purchaseDate, expiryDate });
 
       setIsRegistering(false);
       setIsRegisterOpen(false);
@@ -278,10 +303,10 @@ export default function WarrantyPage() {
               <>
                 {/* ── Product detail card ─────────────────────────────── */}
                 <Card className={`overflow-hidden border-2 transition-all duration-300 ${selectedProduct.warrantyStatus === 'active'
-                    ? 'border-green-500/30 bg-green-500/5'
-                    : selectedProduct.warrantyStatus === 'expired'
-                      ? 'border-red-500/30 bg-red-500/5'
-                      : 'border-amber-500/30 bg-amber-500/5'
+                  ? 'border-green-500/30 bg-green-500/5'
+                  : selectedProduct.warrantyStatus === 'expired'
+                    ? 'border-red-500/30 bg-red-500/5'
+                    : 'border-amber-500/30 bg-amber-500/5'
                   }`}>
                   <CardHeader className="border-b border-border/50 pb-5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -303,6 +328,16 @@ export default function WarrantyPage() {
                         label="Warranty Status"
                         value={chipLabel[selectedProduct.warrantyStatus]}
                       />
+                      {selectedProduct.warrantyStatus === 'active' && selectedProduct.expiryDate && (
+                        <div className="sm:col-span-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                          <InfoRow
+                            icon={<ShieldCheck size={18} />}
+                            label="Warranty Valid Till"
+                            value={formatDate(selectedProduct.expiryDate)}
+                            accent="green"
+                          />
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -331,18 +366,11 @@ export default function WarrantyPage() {
                     <div>
                       <h4 className="text-lg font-bold font-headline text-green-400">✅ Active Warranty Coverage</h4>
                       <p className="text-muted-foreground text-sm mt-1">
-                        Your product is covered. Facing an issue? Raise a complaint and we&apos;ll send a technician.
+                        {selectedProduct.expiryDate
+                          ? <>Your product is under warranty until{' '}<span className="font-semibold text-green-400">{formatDate(selectedProduct.expiryDate)}</span>.</>
+                          : 'Your product is covered under active warranty.'}
                       </p>
                     </div>
-                    <Button
-                      className="bg-green-600 hover:bg-green-500 text-white font-bold px-8 py-6 h-auto text-base shrink-0"
-                      onClick={handleRaiseComplaint}
-                      disabled={isComplaintLoading}
-                    >
-                      {isComplaintLoading
-                        ? <><Loader2 size={18} className="animate-spin mr-2" /> Registering…</>
-                        : <><Phone size={18} className="mr-2" /> Raise Complaint</>}
-                    </Button>
                   </div>
                 )}
 
@@ -355,16 +383,10 @@ export default function WarrantyPage() {
                         <h4 className="text-lg font-bold font-headline text-red-400">Warranty Expired</h4>
                       </div>
                       <p className="text-muted-foreground text-sm">
-                        This product is no longer covered under warranty. You may contact support for paid service assistance.
+                        This product is no longer covered under warranty.
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="border-red-500/40 text-red-400 hover:bg-red-500/10 px-8 py-6 h-auto text-base shrink-0"
-                      onClick={handleContactSupport}
-                    >
-                      <Phone size={18} className="mr-2" /> Contact Support
-                    </Button>
+
                   </div>
                 )}
               </>
@@ -496,6 +518,32 @@ export default function WarrantyPage() {
               <Input value={selectedProduct?.serial ?? ''} disabled className="bg-muted font-mono" />
             </div>
 
+            {/* Warranty Valid Till (auto-calculated, read-only) */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1">
+                <CalendarDays size={14} className="inline" />
+                Warranty Valid Till
+                <Lock size={11} className="ml-0.5 text-muted-foreground opacity-70" />
+              </Label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  value={(() => {
+                    const d = new Date();
+                    d.setFullYear(d.getFullYear() + 5);
+                    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                  })()}
+                  readOnly
+                  tabIndex={-1}
+                  className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 select-none font-medium"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground/70 flex items-center gap-1 pt-0.5">
+                <Lock size={10} />
+                Auto-calculated based on standard 5-year warranty. Not editable.
+              </p>
+            </div>
+
             <DialogFooter className="pt-4 flex gap-3 sticky bottom-0 bg-card pb-1">
               <Button type="button" variant="ghost" onClick={() => setIsRegisterOpen(false)}>
                 <XCircle size={16} className="mr-2" /> Cancel
@@ -561,21 +609,31 @@ export default function WarrantyPage() {
 
 // ── Reusable info row ─────────────────────────────────────────────────────────
 function InfoRow({
-  icon, label, value, mono = false,
+  icon, label, value, mono = false, accent,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   mono?: boolean;
+  accent?: 'green';
 }) {
+  const isGreen = accent === 'green';
   return (
-    <div className="flex items-start gap-3 p-4 rounded-xl bg-background/60 border border-border/50">
-      <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center text-primary shrink-0 mt-0.5">
+    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${
+      isGreen
+        ? 'bg-green-500/8 border-green-500/30'
+        : 'bg-background/60 border-border/50'
+    }`}>
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+        isGreen ? 'bg-green-500/20 text-green-400' : 'bg-primary/15 text-primary'
+      }`}>
         {icon}
       </div>
       <div>
         <p className="text-xs text-muted-foreground uppercase tracking-wider mb-0.5">{label}</p>
-        <p className={`font-semibold text-base leading-tight ${mono ? 'font-mono' : ''}`}>{value}</p>
+        <p className={`font-semibold text-base leading-tight ${mono ? 'font-mono' : ''} ${isGreen ? 'text-green-300' : ''}`}>
+          {value}
+        </p>
       </div>
     </div>
   );
