@@ -12,8 +12,8 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 const NAV_LINKS = [
   { name: 'Products', href: '/products' },
-  { 
-    name: 'About', 
+  {
+    name: 'About',
     href: '#',
     subLinks: [
       { name: 'About Us', href: '/about' },
@@ -28,7 +28,7 @@ export function Navbar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
-  
+
   const logoImage = PlaceHolderImages.find(img => img.id === 'company-logo');
 
   return (
@@ -39,7 +39,7 @@ export function Navbar() {
           <Link href="/" className="flex items-center gap-3 group transition-opacity hover:opacity-90 shrink-0">
             <div className="relative h-8 w-8 md:h-10 md:w-10 overflow-hidden rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 group-hover:border-primary/50 transition-colors shadow-[0_0_15px_rgba(var(--primary),0.1)]">
               {logoImage ? (
-                <Image 
+                <Image
                   src={logoImage.imageUrl}
                   alt="REVOPZ Logo"
                   width={40}
@@ -51,7 +51,7 @@ export function Navbar() {
                 <Zap className="text-primary w-5 h-5 md:w-6 md:h-6" />
               )}
             </div>
-            <span className="font-headline text-xl md:text-2xl font-bold tracking-tighter text-foreground group-hover:text-primary transition-colors">
+            <span className="font-headline text-xl md:text-2xl font-bold tracking-tighter text-[#FF7A00] hover:text-[#FF8C1A] transition-colors duration-200">
               REVOPZ
             </span>
           </Link>
@@ -82,8 +82,8 @@ export function Navbar() {
                               href={sub.href}
                               className={cn(
                                 "block px-4 py-2 text-sm rounded-lg transition-colors",
-                                pathname === sub.href 
-                                  ? "bg-primary/10 text-primary font-bold" 
+                                pathname === sub.href
+                                  ? "bg-primary/10 text-primary font-bold"
                                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
                               )}
                             >
