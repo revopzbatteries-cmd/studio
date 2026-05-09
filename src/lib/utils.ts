@@ -14,17 +14,23 @@ export function generateSecurePassword(length = 12): string {
   const allChars = uppercase + lowercase + numbers + specials;
   
   // Guarantee at least one character of each required type
-  let password = '';
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-  password += specials[Math.floor(Math.random() * specials.length)];
+  const passwordArray = [
+    uppercase[Math.floor(Math.random() * uppercase.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    specials[Math.floor(Math.random() * specials.length)]
+  ];
   
   // Fill the rest with random characters
-  for (let i = password.length; i < Math.max(length, 8); i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)];
+  for (let i = passwordArray.length; i < Math.max(length, 8); i++) {
+    passwordArray.push(allChars[Math.floor(Math.random() * allChars.length)]);
   }
   
-  // Shuffle the password
-  return password.split('').sort(() => 0.5 - Math.random()).join('');
+  // Fisher-Yates shuffle
+  for (let i = passwordArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
+  }
+  
+  return passwordArray.join('');
 }

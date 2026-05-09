@@ -50,6 +50,9 @@ import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Role, Can, hasPermission } from '@/lib/rbac';
 import { generateSecurePassword } from '@/lib/utils';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { loginSchema, addAdminSchema, LoginFormData, AddAdminFormData, checkPasswordStrength } from '@/lib/validations';
 
 // Types
 type AdminUser = {
@@ -69,10 +72,11 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('profile');
 
   // Login State
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState('');
+  const { register: registerLogin, handleSubmit: handleLoginSubmit, formState: { errors: loginErrors } } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' }
+  });
 
   // Data State
   const [admins, setAdmins] = useState<AdminUser[]>([
@@ -128,39 +132,12 @@ export default function AdminPage() {
     localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties));
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-
-    // 1. Sanitize Inputs
-    const sanitizedEmail = email.trim();
-    const sanitizedPassword = password.trim();
-
-    // 2. Client-side Validation
-    if (!sanitizedEmail) {
-      setLoginError('Email is required.');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(sanitizedEmail)) {
-      setLoginError('Please enter a valid email address.');
-      return;
-    }
-    if (!sanitizedPassword) {
-      setLoginError('Password is required.');
-      return;
-    }
-    if (sanitizedPassword.length < 6) {
-      setLoginError('Password must be at least 6 characters.');
-      return;
-    }
-
-    // 3. Attempt Firebase login — let error codes tell us exactly what went wrong.
+  const onLoginSubmit = async (data: LoginFormData) => {
     try {
       setIsLoggingIn(true);
-      console.log(`[Auth Debug] Attempting sign in for: ${sanitizedEmail}`);
+      console.log(`[Auth Debug] Attempting sign in for: ${data.email}`);
 
-      const userCredential = await signInWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
       console.log(`[Auth Debug] Login successful for: ${userCredential.user.email}`);
       // onAuthStateChanged in AuthContext will pick up the new user automatically.
       // The page will re-render from !user → authenticated dashboard instantly.
@@ -247,7 +224,7 @@ export default function AdminPage() {
             <CardTitle className="text-2xl font-headline">Admin Login</CardTitle>
             <CardDescription>Enter your credentials to access the REVOPZ control center.</CardDescription>
           </CardHeader>
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleLoginSubmit(onLoginSubmit)}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
@@ -255,11 +232,10 @@ export default function AdminPage() {
                   id="email"
                   type="email"
                   placeholder="admin@revopz.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="bg-background"
+                  {...registerLogin('email')}
+                  className={`bg-background ${loginErrors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
+                {loginErrors.email && <p className="text-sm text-destructive font-medium">{loginErrors.email.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -267,11 +243,10 @@ export default function AdminPage() {
                   id="password"
                   type="password"
                   placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-background"
+                  {...registerLogin('password')}
+                  className={`bg-background ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
+                {loginErrors.password && <p className="text-sm text-destructive font-medium">{loginErrors.password.message}</p>}
               </div>
             </CardContent>
             <CardFooter>
@@ -423,47 +398,63 @@ function SidebarButton({ active, onClick, icon, label }: { active: boolean, onCl
 }
 
 function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>, mockRole: Role }) {
-  const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<Role>('Product Manager');
-  const [newPassword, setNewPassword] = useState('');
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
-  
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
   const [resetPasswordVal, setResetPasswordVal] = useState('');
-  
-  const { toast } = useToast();
 
+  // ── React Hook Form setup ──────────────────────────────────────────────────
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors, isValid }
+  } = useForm<AddAdminFormData>({
+    resolver: zodResolver(addAdminSchema),
+    mode: 'onChange',
+    defaultValues: { name: '', email: '', role: 'Product Manager', password: '' }
+  });
+
+  const watchedPassword = watch('password', '');
+  const passwordConditions = checkPasswordStrength(watchedPassword);
+  const passwordMet = passwordConditions.filter(c => c.met).length;
+  const passwordStrength = passwordMet === 5 ? 'strong' : passwordMet >= 3 ? 'medium' : 'weak';
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleGeneratePassword = () => {
     const p = generateSecurePassword(12);
-    setNewPassword(p);
+    setValue('password', p, { shouldValidate: true });
   };
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       toast({ title: "Copied!", description: "Password copied to clipboard." });
-    } catch (err) {
+    } catch {
       toast({ title: "Error", description: "Failed to copy.", variant: "destructive" });
     }
   };
 
-  const handleAddAdmin = () => {
-    if (!newName || !newEmail || !newPassword) {
-      toast({ title: "Error", description: "Please fill all required fields.", variant: "destructive" });
-      return;
-    }
+  const onAddAdminSubmit = async (data: AddAdminFormData) => {
+    setIsSubmitting(true);
+    // Simulate a brief async operation (replace with Firebase call later)
+    await new Promise(r => setTimeout(r, 500));
     const newAdmin: AdminUser = {
       id: Math.random().toString(36).substr(2, 9),
-      name: newName,
-      email: newEmail,
-      role: newRole
+      name: data.name.trim(),
+      email: data.email.toLowerCase().trim(),
+      role: data.role
     };
-    setAdmins([...admins, newAdmin]);
-    setNewName('');
-    setNewEmail('');
-    setNewPassword('');
-    toast({ title: "Admin Added", description: `${newName} is now a ${newRole}.` });
+    setAdmins(prev => [...prev, newAdmin]);
+    toast({ title: "Admin Added", description: `${newAdmin.name} is now a ${newAdmin.role}.` });
+    reset();
+    setShowPassword(false);
+    setIsAddDialogOpen(false);
+    setIsSubmitting(false);
   };
 
   const handleGenerateResetPassword = () => {
@@ -484,6 +475,13 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
       default: return <Badge>{r}</Badge>;
     }
   };
+
+  // Strength indicator styles
+  const strengthBarClass = passwordStrength === 'strong'
+    ? 'bg-green-500'
+    : passwordStrength === 'medium'
+    ? 'bg-yellow-500'
+    : 'bg-destructive';
 
   return (
     <div className="space-y-6">
@@ -520,7 +518,10 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
               <CardDescription>Manage team access and roles.</CardDescription>
             </div>
             <Can role={mockRole} perform="manage_admins">
-              <Dialog>
+              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                if (!open) { reset(); setShowPassword(false); }
+                setIsAddDialogOpen(open);
+              }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add Admin</Button>
                 </DialogTrigger>
@@ -529,60 +530,134 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
                     <DialogTitle>Add New Administrator</DialogTitle>
                     <DialogDescription>Assign system access and create credentials.</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Enter name" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@revopz.com" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Role</Label>
-                      <Select value={newRole} onValueChange={(v: Role) => setNewRole(v)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Role" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-popover">
-                          <SelectItem value="Manager">Manager</SelectItem>
-                          <SelectItem value="Product Manager">Product Manager</SelectItem>
-                          <SelectItem value="Production Unit">Production Unit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="password">Temporary Password</Label>
-                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
-                          <RefreshCcw size={12} className="mr-1" /> Auto-generate
-                        </Button>
-                      </div>
-                      <div className="relative">
-                        <Input 
-                          id="password" 
-                          type={showPassword ? "text" : "password"} 
-                          value={newPassword} 
-                          onChange={(e) => setNewPassword(e.target.value)} 
-                          placeholder="••••••••" 
-                          className="pr-20"
+
+                  <form onSubmit={handleSubmit(onAddAdminSubmit)} noValidate>
+                    <div className="grid gap-4 py-4">
+
+                      {/* Full Name */}
+                      <div className="space-y-1">
+                        <Label htmlFor="admin-name">Full Name</Label>
+                        <Input
+                          id="admin-name"
+                          placeholder="e.g. John Smith"
+                          {...register('name')}
+                          className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
                         />
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
-                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
-                            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(newPassword)}>
-                            <Copy size={14} />
+                        {errors.name && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.name.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Email */}
+                      <div className="space-y-1">
+                        <Label htmlFor="admin-email">Email</Label>
+                        <Input
+                          id="admin-email"
+                          type="email"
+                          placeholder="email@revopz.com"
+                          {...register('email')}
+                          className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
+                        />
+                        {errors.email && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.email.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Role */}
+                      <div className="space-y-1">
+                        <Label>Role</Label>
+                        <Select
+                          defaultValue="Product Manager"
+                          onValueChange={(v: Role) => setValue('role', v, { shouldValidate: true })}
+                        >
+                          <SelectTrigger className={errors.role ? 'border-destructive' : ''}>
+                            <SelectValue placeholder="Select Role" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover">
+                            <SelectItem value="Manager">Manager</SelectItem>
+                            <SelectItem value="Product Manager">Product Manager</SelectItem>
+                            <SelectItem value="Production Unit">Production Unit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.role && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.role.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Password */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="admin-password">Temporary Password</Label>
+                          <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
+                            <RefreshCcw size={12} className="mr-1" /> Auto-generate
                           </Button>
                         </div>
+                        <div className="relative">
+                          <Input
+                            id="admin-password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            {...register('password')}
+                            className={`pr-20 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                              {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(watchedPassword)} disabled={!watchedPassword}>
+                              <Copy size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        {errors.password && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.password.message}
+                          </p>
+                        )}
+
+                        {/* Password Strength Bar + Checklist */}
+                        {watchedPassword.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${strengthBarClass}`}
+                                  style={{ width: `${(passwordMet / 5) * 100}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-semibold capitalize ${
+                                passwordStrength === 'strong' ? 'text-green-500' :
+                                passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                              }`}>
+                                {passwordStrength}
+                              </span>
+                            </div>
+                            <ul className="space-y-1">
+                              {passwordConditions.map((c) => (
+                                <li key={c.label} className={`flex items-center gap-1.5 text-xs transition-colors duration-200 ${c.met ? 'text-green-500' : 'text-muted-foreground'}`}>
+                                  {c.met ? <CheckCircle2 size={11} /> : <X size={11} />}
+                                  {c.label}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Must be at least 8 characters with upper, lower, number, and special chars.</p>
                     </div>
-                  </div>
-                  <DialogFooter>
-                    <Button onClick={handleAddAdmin} className="w-full">Create Administrator</Button>
-                  </DialogFooter>
+
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                      <Button type="submit" disabled={!isValid || isSubmitting} className="min-w-[160px]">
+                        {isSubmitting ? <><Loader2 size={14} className="mr-2 animate-spin" /> Creating...</> : 'Create Administrator'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
                 </DialogContent>
               </Dialog>
             </Can>
@@ -621,11 +696,19 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
                             <div className="py-4 space-y-4">
                               <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
                                 <span className="text-sm text-muted-foreground">New Password</span>
-                                <span className="font-mono text-lg font-bold tracking-wider">{resetPasswordVal}</span>
-                                <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
-                                  <Copy size={14} className="mr-2" /> Copy to Clipboard
-                                </Button>
+                                <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
+                                <div className="flex gap-2">
+                                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
+                                    <Copy size={14} className="mr-2" /> Copy
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
+                                    <RefreshCcw size={14} className="mr-1" /> Regenerate
+                                  </Button>
+                                </div>
                               </div>
+                              <p className="text-xs text-muted-foreground text-center">
+                                This password meets all security requirements. Share it securely with the administrator.
+                              </p>
                             </div>
                             <DialogFooter>
                               <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
