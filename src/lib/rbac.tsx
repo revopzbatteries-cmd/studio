@@ -13,7 +13,9 @@ export type Permission =
   | 'reset_passwords'
   | 'manage_users'
   | 'manage_products'
-  | 'manage_units'
+  | 'manage_units'   // view the units module (sidebar access)
+  | 'add_units'      // can add new manufactured units
+  | 'delete_units'   // can delete manufactured units
   | 'view_warranty'
   | 'manage_careers';
 
@@ -27,16 +29,21 @@ export const ROLE_PERMISSIONS: Record<FirestoreRole, Permission[]> = {
     'manage_users',
     'manage_products',
     'manage_units',
+    'add_units',
+    'delete_units',
     'view_warranty',
     'manage_careers',
   ],
   product_manager: [
     'manage_products',
     'manage_units',
+    'add_units',
+    'delete_units',
     'view_warranty',
     'manage_careers',
   ],
-  production_unit: ['manage_units'],
+  // production_unit: can view + add units ONLY. No delete, no other modules.
+  production_unit: ['manage_units', 'add_units'],
 };
 
 // ── Map Firestore snake_case role → UI display label ─────────────────────────

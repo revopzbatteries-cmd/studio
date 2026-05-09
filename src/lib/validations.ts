@@ -32,8 +32,45 @@ export const addAdminSchema = z.object({
   password: passwordSchema,
 });
 
+const todayDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const addManufacturedUnitSchema = z.object({
+  productName: z.string()
+    .trim()
+    .min(1, "Product name is required")
+    .min(3, "Product name must be at least 3 characters"),
+  productNumber: z.string()
+    .trim()
+    .min(1, "Product number is required")
+    .transform(value => value.toUpperCase())
+    .refine(value => !/\s/.test(value), "Product number cannot contain spaces"),
+  category: z.enum(['Inverter', 'Battery', 'Solar', 'Other'], {
+    errorMap: () => ({ message: "Please select a valid category" })
+  }),
+  manufacturingDate: z.string()
+    .min(1, "Manufacturing date is required")
+    .refine(value => !Number.isNaN(new Date(`${value}T00:00:00`).getTime()), "Please enter a valid date")
+    .refine(value => value <= todayDate(), "Manufacturing date cannot be in the future"),
+  warrantyMonths: z.coerce.number({
+    required_error: "Warranty period is required",
+    invalid_type_error: "Warranty period must be a number"
+  })
+    .int("Warranty period must be a whole number")
+    .positive("Warranty period must be a positive number"),
+  status: z.enum(['Ready', 'Registered'], {
+    errorMap: () => ({ message: "Please select a valid status" })
+  }),
+});
+
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type AddAdminFormData = z.infer<typeof addAdminSchema>;
+export type AddManufacturedUnitFormData = z.infer<typeof addManufacturedUnitSchema>;
 
 export type PasswordStrengthCondition = {
   label: string;

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   LayoutDashboard,
   Package,
@@ -50,10 +51,25 @@ import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Role, Can, hasPermission, toDisplayRole } from '@/lib/rbac';
 import { AdminProfile, getInitials } from '@/lib/adminService';
+import {
+  addManufacturedUnit,
+  subscribeToManufacturedUnits,
+  type ManufacturedUnit,
+  type ManufacturedUnitCategory,
+  type ManufacturedUnitStatus,
+} from '@/lib/manufacturedUnits';
 import { generateSecurePassword } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, addAdminSchema, LoginFormData, AddAdminFormData, checkPasswordStrength } from '@/lib/validations';
+import {
+  loginSchema,
+  addAdminSchema,
+  addManufacturedUnitSchema,
+  type LoginFormData,
+  type AddAdminFormData,
+  type AddManufacturedUnitFormData,
+  checkPasswordStrength,
+} from '@/lib/validations';
 
 // Types
 type AdminUser = {
@@ -228,7 +244,8 @@ export default function AdminPage() {
   const initials = getInitials(adminProfile.name);
 
   // Auto-redirect Production Unit to the only permitted tab
-  const resolvedTab = !hasPermission(permissions, 'manage_admins') && activeTab === 'profile' ? 'units' : activeTab;
+  const isProductionUnit = displayRole === 'Production Unit';
+  const resolvedTab = isProductionUnit ? 'units' : (activeTab === 'profile' && !hasPermission(permissions, 'manage_admins') ? 'units' : activeTab);
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
@@ -298,7 +315,7 @@ export default function AdminPage() {
           <div className="grid gap-6">
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
-            {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} />}
+            {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} permissions={permissions} />}
             {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
             {resolvedTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} permissions={permissions} />}
@@ -1335,318 +1352,352 @@ function ApplicationsSection({ applications, setApplications, permissions }: { a
 }
 // ── ManufacturedUnitsSection ─────────────────────────────────────────────────
 
-interface MockCatalogProduct {
-  id: string;
-  name: string;
-  category: string;
-  warrantyMonths: number;
-}
+const UNIT_CATEGORIES: ManufacturedUnitCategory[] = ['Inverter', 'Battery', 'Solar', 'Other'];
+const UNIT_STATUSES: ManufacturedUnitStatus[] = ['Ready', 'Registered'];
 
-interface ManufacturedUnit {
-  id: string;
-  productId: string;
-  productName: string;
-  productNumber: string;
-  category: string;
-  manufacturingDate: string;
-  warrantyMonths: number;
-  status: 'Ready' | 'Registered';
-}
+const getTodayInputDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-const MOCK_CATALOG: MockCatalogProduct[] = [
-  { id: 'p1', name: 'RZ 1100+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p2', name: 'RZ 1350+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p3', name: 'RZ 1550+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p4', name: 'RZ 200Ah Battery', category: 'Battery', warrantyMonths: 60 },
-  { id: 'p5', name: 'RZ 150Ah Battery', category: 'Battery', warrantyMonths: 60 },
-];
-
-const TODAY_ISO = new Date().toISOString().split('T')[0];
-
-function ManufacturedUnitsSection({ permissions }: { permissions: string[] }) {
+function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
   const { toast } = useToast();
-  const [units, setUnits] = useState<ManufacturedUnit[]>([
-    {
-      id: 'u1',
-      productId: 'p2',
-      productName: 'RZ 1350+',
-      productNumber: 'RZ1350-001',
-      category: 'Inverter',
-      manufacturingDate: '2026-04-01',
-      warrantyMonths: 60,
-      status: 'Ready',
-    },
-    {
-      id: 'u2',
-      productId: 'p4',
-      productName: 'RZ 200Ah Battery',
-      productNumber: 'RZ200AH-001',
-      category: 'Battery',
-      manufacturingDate: '2026-03-15',
-      warrantyMonths: 60,
-      status: 'Registered',
-    },
-  ]);
 
+  const canAdd    = hasPermission(permissions, 'add_units');
+  const [units, setUnits] = useState<ManufacturedUnit[]>([]);
+  const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  const emptyForm = {
-    productId: '',
+  const [isDialogOpen, setIsDialogOpen]   = useState(false);
+  const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
-    category: '',
+    category: 'Inverter',
+    manufacturingDate: getTodayInputDate(),
     warrantyMonths: 60,
+    status: 'Ready',
   };
-  const [form, setForm] = useState(emptyForm);
+
+  const {
+    register: registerUnit,
+    handleSubmit: handleUnitSubmit,
+    reset: resetUnitForm,
+    watch: watchUnitForm,
+    setValue: setUnitValue,
+    setError: setUnitError,
+    formState: { errors: unitErrors, isSubmitting },
+  } = useForm<AddManufacturedUnitFormData>({
+    resolver: zodResolver(addManufacturedUnitSchema),
+    defaultValues: defaultUnitFormValues,
+  });
+
+  const watchedCategory = watchUnitForm('category');
+  const watchedStatus = watchUnitForm('status');
+
+  useEffect(() => {
+    setIsLoadingUnits(true);
+
+    const unsubscribe = subscribeToManufacturedUnits(
+      nextUnits => {
+        setUnits(nextUnits);
+        setIsLoadingUnits(false);
+      },
+      error => {
+        console.error('[ManufacturedUnits] Firestore subscription failed:', error);
+        setIsLoadingUnits(false);
+        toast({
+          title: 'Unable to load units',
+          description: 'Manufactured units could not be loaded. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    );
+
+    return unsubscribe;
+  }, [toast]);
 
   const openAddDialog = () => {
-    setForm(emptyForm);
-    setFormErrors({});
+    resetUnitForm({ ...defaultUnitFormValues, manufacturingDate: getTodayInputDate() });
     setIsDialogOpen(true);
   };
 
-  const handleProductChange = (productId: string) => {
-    const selected = MOCK_CATALOG.find(p => p.id === productId);
-    if (!selected) return;
-    setForm(f => ({
-      ...f,
-      productId,
-      productName: selected.name,
-      category: selected.category,
-      warrantyMonths: selected.warrantyMonths,
-    }));
-  };
-
-  const validate = () => {
-    const errs: Record<string, string> = {};
-    if (!form.productId) errs.productId = 'Please select a product.';
-    if (!form.productNumber.trim()) errs.productNumber = 'Product number is required.';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = () => {
-    if (!validate()) return;
-    const newUnit: ManufacturedUnit = {
-      id: Math.random().toString(36).substr(2, 9),
-      productId: form.productId,
-      productName: form.productName,
-      productNumber: form.productNumber.trim().toUpperCase(),
-      category: form.category,
-      manufacturingDate: TODAY_ISO,
-      warrantyMonths: form.warrantyMonths,
-      status: 'Ready',
-    };
-    setUnits(prev => [newUnit, ...prev]);
+  const closeDialog = () => {
     setIsDialogOpen(false);
-    toast({ title: '✅ Unit Added', description: `${newUnit.productName} (${newUnit.productNumber}) added successfully.` });
   };
 
-  const handleDelete = (id: string) => {
-    setUnits(prev => prev.filter(u => u.id !== id));
-    toast({ title: 'Unit Removed', description: 'The manufactured unit has been deleted.' });
+  const onAddUnitSubmit = async (data: AddManufacturedUnitFormData) => {
+    if (!canAdd) {
+      toast({
+        title: 'Permission denied',
+        description: 'Your role cannot add manufactured units.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizedProductNumber = data.productNumber.trim().toUpperCase();
+    if (units.some(unit => unit.productNumber.toUpperCase() === normalizedProductNumber)) {
+      setUnitError('productNumber', {
+        type: 'manual',
+        message: 'This product number already exists.',
+      });
+      return;
+    }
+
+    try {
+      await addManufacturedUnit({
+        ...data,
+        productNumber: normalizedProductNumber,
+        createdBy: adminProfile.uid,
+        createdByRole: adminProfile.role,
+      });
+
+      setIsDialogOpen(false);
+      resetUnitForm(defaultUnitFormValues);
+      toast({
+        title: 'Unit Added',
+        description: `${data.productName.trim()} (${normalizedProductNumber}) has been recorded.`,
+      });
+    } catch (error: any) {
+      const message = error?.message ?? 'Manufactured unit could not be added. Please try again.';
+      if (message.toLowerCase().includes('product number')) {
+        setUnitError('productNumber', { type: 'manual', message });
+      }
+      toast({
+        title: 'Add failed',
+        description: message,
+        variant: 'destructive',
+      });
+    }
   };
 
-  const filtered = units.filter(u =>
-    u.productNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.productName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return units;
 
-  const formatDateDisplay = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return units.filter(u =>
+      u.productNumber.toLowerCase().includes(term) ||
+      u.productName.toLowerCase().includes(term)
+    );
+  }, [searchTerm, units]);
+
+  const formatDate = (iso: string) =>
+    new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const statusBadge = (s: ManufacturedUnit['status']) => {
+    if (s === 'Ready')      return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
+    if (s === 'Registered') return <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>;
+    return                         <Badge className="bg-muted text-muted-foreground">{s}</Badge>;
+  };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <div>
           <CardTitle className="text-lg flex items-center gap-2">
             <Factory size={20} className="text-primary" /> Manufactured Units
           </CardTitle>
-          <CardDescription>Manage manufactured products and track warranty-ready units.</CardDescription>
+          <CardDescription>
+            {canAdd
+              ? 'Add and track manufactured products. New units are recorded with today\'s date.'
+              : 'View and search manufactured products and warranty-ready units.'}
+          </CardDescription>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
-              placeholder="Search by product number…"
+              placeholder="Search by name or number…"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="pl-9 w-56"
             />
           </div>
-          <Can permissions={permissions} perform="manage_units">
-            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0">
-              <Plus size={16} className="mr-2" /> Add Unit
+          {canAdd && (
+            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
+              <Plus size={16} className="mr-2" /> Add Manufactured Unit
             </Button>
-          </Can>
+          )}
         </div>
       </CardHeader>
 
-      {/* ── Add Unit Dialog ── */}
-      <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) setIsDialogOpen(false); }}>
-        <DialogContent className="bg-card max-w-lg max-h-[90vh] overflow-y-auto">
+      {/* ── Add Unit Dialog ─────────────────────────────────────────────────── */}
+      <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) closeDialog(); }}>
+        <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-headline flex items-center gap-2">
               <Factory size={20} className="text-primary" /> Add Manufactured Unit
             </DialogTitle>
             <DialogDescription>
-              Select a product to auto-fill category and warranty. Manufacturing date is locked to today.
+              Fill in the unit details. All fields are required. The product number must be unique.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Product Select */}
+          <form onSubmit={handleUnitSubmit(onAddUnitSubmit)} className="space-y-4 py-2">
+
+            {/* Product Name */}
             <div className="space-y-1">
-              <Label htmlFor="unit-product">Product *</Label>
-              <Select value={form.productId} onValueChange={handleProductChange}>
-                <SelectTrigger id="unit-product" className={formErrors.productId ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select a product…" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  {MOCK_CATALOG.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {formErrors.productId && <p className="text-xs text-destructive">{formErrors.productId}</p>}
+              <Label htmlFor="unit-product-name">Product Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="unit-product-name"
+                placeholder="e.g. RZ 1350+"
+                {...registerUnit('productName')}
+                className={unitErrors.productName ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {unitErrors.productName && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.productName.message}</p>
+              )}
             </div>
 
             {/* Product Number */}
             <div className="space-y-1">
-              <Label htmlFor="unit-number">Product Number *</Label>
+              <Label htmlFor="unit-number">Product / Serial Number <span className="text-destructive">*</span></Label>
               <Input
                 id="unit-number"
-                autoFocus
-                placeholder="e.g. RZ1350-010"
-                className={`font-mono uppercase ${formErrors.productNumber ? 'border-destructive' : ''}`}
-                value={form.productNumber}
-                onChange={e => setForm(f => ({ ...f, productNumber: e.target.value }))}
+                placeholder="e.g. RZ1350-001"
+                {...registerUnit('productNumber', {
+                  onChange: event => {
+                    event.target.value = event.target.value.toUpperCase().replace(/\s/g, '');
+                  },
+                })}
+                className={`font-mono ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
-              {formErrors.productNumber && <p className="text-xs text-destructive">{formErrors.productNumber}</p>}
+              {unitErrors.productNumber
+                ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
+                : <p className="text-xs text-muted-foreground/70 mt-1">Unique serial number for tracking.</p>
+              }
             </div>
 
-            {/* Category — auto-filled, disabled */}
+            {/* Category */}
             <div className="space-y-1">
-              <Label>Category</Label>
-              <Input
-                value={form.category || '—'}
-                disabled
-                className="bg-muted/40 text-muted-foreground cursor-not-allowed"
-              />
-              <p className="text-xs text-muted-foreground/70">Auto-filled from selected product.</p>
+              <Label>Category <span className="text-destructive">*</span></Label>
+              <Select value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
+                <SelectTrigger className={unitErrors.category ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select category…" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {UNIT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {unitErrors.category && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.category.message}</p>
+              )}
             </div>
 
-            {/* Warranty Months — auto-filled, editable */}
+            {/* Manufacturing Date */}
             <div className="space-y-1">
-              <Label htmlFor="unit-warranty">Warranty (Months)</Label>
-              <Input
-                id="unit-warranty"
-                type="number"
-                min={1}
-                value={form.warrantyMonths}
-                onChange={e => setForm(f => ({ ...f, warrantyMonths: Number(e.target.value) }))}
-                className="w-32"
-              />
-              <p className="text-xs text-muted-foreground/70">Auto-filled; you may adjust if needed.</p>
-            </div>
-
-            {/* Manufacturing Date — locked to today */}
-            <div className="space-y-1">
-              <Label className="flex items-center gap-1">
-                <CalendarDays size={13} /> Manufacturing Date
-                <Lock size={11} className="ml-0.5 text-muted-foreground opacity-70" />
+              <Label htmlFor="unit-date">
+                Manufacturing Date <span className="text-destructive">*</span>
               </Label>
               <Input
-                value={formatDateDisplay(TODAY_ISO)}
-                readOnly
-                tabIndex={-1}
-                className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 font-medium"
+                id="unit-date"
+                type="date"
+                max={getTodayInputDate()}
+                {...registerUnit('manufacturingDate')}
+                className={unitErrors.manufacturingDate ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
-              <p className="text-xs text-muted-foreground/70 flex items-center gap-1">
-                <Lock size={10} /> Automatically set to today's date.
-              </p>
+              {unitErrors.manufacturingDate && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.manufacturingDate.message}</p>
+              )}
             </div>
-          </div>
 
-          <DialogFooter className="pt-4 flex gap-3 sticky bottom-0 bg-card pb-1">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              <X size={16} className="mr-2" /> Cancel
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={!form.productId || !form.productNumber.trim()}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Factory size={16} className="mr-2" /> Add Unit
-            </Button>
-          </DialogFooter>
+            {/* Warranty + Status — 2-column row */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Warranty */}
+              <div className="space-y-1">
+                <Label htmlFor="unit-warranty">Warranty (Months) <span className="text-destructive">*</span></Label>
+                <Input
+                  id="unit-warranty"
+                  type="number"
+                  min={1}
+                  step={1}
+                  {...registerUnit('warrantyMonths')}
+                  className={unitErrors.warrantyMonths ? 'border-destructive focus-visible:ring-destructive' : ''}
+                />
+                {unitErrors.warrantyMonths && (
+                  <p className="text-xs text-destructive">{unitErrors.warrantyMonths.message}</p>
+                )}
+              </div>
+
+              {/* Status */}
+              <div className="space-y-1">
+                <Label>Status <span className="text-destructive">*</span></Label>
+                <Select value={watchedStatus} onValueChange={value => setUnitValue('status', value as ManufacturedUnitStatus, { shouldDirty: true, shouldValidate: true })}>
+                  <SelectTrigger className={unitErrors.status ? 'border-destructive' : ''}>
+                    <SelectValue placeholder="Select status…" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {UNIT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {unitErrors.status && (
+                  <p className="text-xs text-destructive">{unitErrors.status.message}</p>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
+              <Button type="button" variant="outline" onClick={closeDialog} disabled={isSubmitting}>
+                <X size={16} className="mr-2" /> Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-primary hover:bg-primary/90 min-w-[120px]"
+              >
+                {isSubmitting
+                  ? <><Loader2 size={14} className="mr-2 animate-spin" /> Saving…</>
+                  : <><Factory size={16} className="mr-2" /> Add Unit</>}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* ── Table ── */}
+      {/* ── Table ─────────────────────────────────────────────────────────────── */}
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Product Name</TableHead>
-              <TableHead>Product Number</TableHead>
+              <TableHead>Product No.</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Mfg. Date</TableHead>
-              <TableHead>Warranty (Mo.)</TableHead>
+              <TableHead className="text-center">Warranty (Mo.)</TableHead>
               <TableHead>Status</TableHead>
-              <Can permissions={permissions} perform="manage_units"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length > 0 ? filtered.map(unit => (
+            {isLoadingUnits ? (
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={`unit-skeleton-${index}`}>
+                  <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell className="text-center"><Skeleton className="mx-auto h-4 w-12" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                </TableRow>
+              ))
+            ) : filtered.length > 0 ? filtered.map(unit => (
               <TableRow key={unit.id}>
                 <TableCell className="font-medium">{unit.productName}</TableCell>
                 <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
-                <TableCell className="text-muted-foreground capitalize">{unit.category}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDateDisplay(unit.manufacturingDate)}</TableCell>
+                <TableCell className="text-muted-foreground">{unit.category}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturingDate)}</TableCell>
                 <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
-                <TableCell>
-                  {unit.status === 'Ready'
-                    ? <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>
-                    : <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>}
-                </TableCell>
-                <Can permissions={permissions} perform="manage_units">
-                  <TableCell className="text-right">
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive">
-                          <Trash2 size={16} />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Unit?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Remove <span className="font-mono font-bold">{unit.productNumber}</span> from the manufactured units list. This cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleDelete(unit.id)}
-                            className="bg-destructive hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
-                </Can>
+                <TableCell>{statusBadge(unit.status)}</TableCell>
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   {searchTerm
                     ? `No units found matching "${searchTerm}".`
-                    : 'No manufactured units yet. Click "+ Add Unit" to get started.'}
+                    : canAdd
+                      ? 'No manufactured units yet. Click "Add Manufactured Unit" to get started.'
+                      : 'No manufactured units have been recorded yet.'}
                 </TableCell>
               </TableRow>
             )}
