@@ -115,12 +115,12 @@ export default function AdminPage() {
     } catch (error: any) {
       console.warn('[Auth] Sign-in failed. Code:', error.code);
       const messages: Record<string, { title: string; description: string }> = {
-        'auth/user-not-found':       { title: 'Access Denied',            description: "You don't have admin access." },
-        'auth/wrong-password':       { title: 'Incorrect Password',       description: 'Incorrect password. Please contact the super admin.' },
-        'auth/invalid-credential':   { title: 'Login Failed',             description: 'Invalid credentials. Please check your email and password.' },
-        'auth/invalid-email':        { title: 'Invalid Email',            description: 'The email address format is not valid.' },
-        'auth/too-many-requests':    { title: 'Account Temporarily Locked', description: 'Too many failed attempts. Please try again later.' },
-        'auth/network-request-failed': { title: 'Network Error',          description: 'Check your internet connection and try again.' },
+        'auth/user-not-found': { title: 'Access Denied', description: "You don't have admin access." },
+        'auth/wrong-password': { title: 'Incorrect Password', description: 'Incorrect password. Please contact the super admin.' },
+        'auth/invalid-credential': { title: 'Login Failed', description: 'Invalid credentials. Please check your email and password.' },
+        'auth/invalid-email': { title: 'Invalid Email', description: 'The email address format is not valid.' },
+        'auth/too-many-requests': { title: 'Account Temporarily Locked', description: 'Too many failed attempts. Please try again later.' },
+        'auth/network-request-failed': { title: 'Network Error', description: 'Check your internet connection and try again.' },
       };
       const msg = messages[error.code] ?? { title: 'Error', description: 'Something went wrong. Please try again later.' };
       toast({ ...msg, variant: 'destructive' });
@@ -398,7 +398,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   };
 
   const getRoleBadge = (r: Role) => {
-    switch(r) {
+    switch (r) {
       case 'Manager': return <Badge className="bg-primary">Manager</Badge>;
       case 'Product Manager': return <Badge className="bg-blue-500">Product Manager</Badge>;
       case 'Production Unit': return <Badge className="bg-orange-500">Production Unit</Badge>;
@@ -410,8 +410,8 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   const strengthBarClass = passwordStrength === 'strong'
     ? 'bg-green-500'
     : passwordStrength === 'medium'
-    ? 'bg-yellow-500'
-    : 'bg-destructive';
+      ? 'bg-yellow-500'
+      : 'bg-destructive';
 
   return (
     <div className="space-y-6">
@@ -453,7 +453,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                 setIsAddDialogOpen(open);
               }}>
                 <DialogTrigger asChild>
-                  <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add Admin</Button>
+                  <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add User</Button>
                 </DialogTrigger>
                 <DialogContent className="bg-card sm:max-w-md">
                   <DialogHeader>
@@ -561,10 +561,9 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                                   style={{ width: `${(passwordMet / 5) * 100}%` }}
                                 />
                               </div>
-                              <span className={`text-xs font-semibold capitalize ${
-                                passwordStrength === 'strong' ? 'text-green-500' :
-                                passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
-                              }`}>
+                              <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
+                                  passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                                }`}>
                                 {passwordStrength}
                               </span>
                             </div>
@@ -952,7 +951,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products, permis
                                   <p className="text-sm italic">"{selectedWarranty.claimMessage}"</p>
                                 </div>
                               )}
-                              
+
                               <div className="p-4 rounded-lg bg-muted border flex items-center gap-3">
                                 <ShieldCheck size={24} className="text-primary" />
                                 <div>
