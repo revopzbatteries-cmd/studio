@@ -26,7 +26,8 @@ import {
   AlertTriangle,
   Factory,
   Lock,
-  CalendarDays
+  CalendarDays,
+  Loader2
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -40,6 +41,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
 import type { AdminProduct } from './types';
+import { useAuth } from '@/contexts/AuthContext';
+import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 // Types
 type AdminUser = {
@@ -51,12 +55,14 @@ type AdminUser = {
 
 export default function AdminPage() {
   const { toast } = useToast();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { user, loading: authLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Login State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   // Data State
   const [admins, setAdmins] = useState<AdminUser[]>([
@@ -69,9 +75,6 @@ export default function AdminPage() {
 
   // Initialize and Sync Data
   useEffect(() => {
-    const auth = localStorage.getItem('revopz_admin_auth');
-    if (auth === 'true') setIsLoggedIn(true);
-
     // Sync Jobs
     const savedJobs = localStorage.getItem('revopz_jobs');
     if (savedJobs) {
@@ -115,22 +118,115 @@ export default function AdminPage() {
     localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties));
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      setIsLoggedIn(true);
-      localStorage.setItem('revopz_admin_auth', 'true');
+    setLoginError('');
+
+    // 1. Sanitize Inputs
+    const sanitizedEmail = email.trim();
+    const sanitizedPassword = password.trim();
+
+    // 2. Client-side Validation
+    if (!sanitizedEmail) {
+      setLoginError('Email is required.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(sanitizedEmail)) {
+      setLoginError('Please enter a valid email address.');
+      return;
+    }
+    if (!sanitizedPassword) {
+      setLoginError('Password is required.');
+      return;
+    }
+    if (sanitizedPassword.length < 6) {
+      setLoginError('Password must be at least 6 characters.');
+      return;
+    }
+
+    // 3. Attempt Firebase login — let error codes tell us exactly what went wrong.
+    try {
+      setIsLoggingIn(true);
+      console.log(`[Auth Debug] Attempting sign in for: ${sanitizedEmail}`);
+
+      const userCredential = await signInWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
+      console.log(`[Auth Debug] Login successful for: ${userCredential.user.email}`);
+      // onAuthStateChanged in AuthContext will pick up the new user automatically.
+      // The page will re-render from !user → authenticated dashboard instantly.
       toast({ title: "Login Successful", description: "Welcome to the REVOPZ Admin Panel." });
+
+    } catch (error: any) {
+      console.warn("[Auth] Sign-in failed. Code:", error.code);
+
+      if (error.code === 'auth/user-not-found') {
+        // Legacy SDK: email not registered
+        toast({
+          title: "Access Denied",
+          description: "You don't have any access.",
+          variant: "destructive",
+        });
+      } else if (error.code === 'auth/wrong-password') {
+        // Legacy SDK: email exists but password wrong
+        toast({
+          title: "Incorrect Password",
+          description: "Incorrect password. Please contact the super admin.",
+          variant: "destructive",
+        });
+      } else if (error.code === 'auth/invalid-credential') {
+        // Modern Firebase SDK (v9+): covers both wrong email AND wrong password.
+        // We cannot distinguish them without email enumeration (which is a security risk).
+        // Show a combined message — the most common case here is wrong password
+        // since this is an admin-only system with a known fixed email.
+        toast({
+          title: "Login Failed",
+          description: "Invalid credentials. Please check your email and password, or contact the super admin.",
+          variant: "destructive",
+        });
+      } else if (error.code === 'auth/invalid-email') {
+        toast({
+          title: "Invalid Email",
+          description: "The email address format is not valid.",
+          variant: "destructive",
+        });
+      } else if (error.code === 'auth/too-many-requests') {
+        toast({
+          title: "Account Temporarily Locked",
+          description: "Too many failed attempts. Please try again later or reset your password.",
+          variant: "destructive",
+        });
+      } else if (error.code === 'auth/network-request-failed') {
+        toast({
+          title: "Network Error",
+          description: "Something went wrong. Please check your internet connection and try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Something went wrong. Please try again later.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('revopz_admin_auth');
+  const handleLogout = async () => {
+    await logout();
     toast({ title: "Logged Out", description: "You have been logged out of the admin panel." });
   };
 
-  if (!isLoggedIn) {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md border-primary/20 bg-card/50 backdrop-blur-sm">
@@ -169,8 +265,8 @@ export default function AdminPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90">
-                Sign In
+              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 transition-all" disabled={isLoggingIn}>
+                {isLoggingIn ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : "Sign In"}
               </Button>
             </CardFooter>
           </form>
@@ -1130,11 +1226,11 @@ interface ManufacturedUnit {
 }
 
 const MOCK_CATALOG: MockCatalogProduct[] = [
-  { id: 'p1', name: 'RZ 1100+',          category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p2', name: 'RZ 1350+',          category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p3', name: 'RZ 1550+',          category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p4', name: 'RZ 200Ah Battery',  category: 'Battery',  warrantyMonths: 60 },
-  { id: 'p5', name: 'RZ 150Ah Battery',  category: 'Battery',  warrantyMonths: 60 },
+  { id: 'p1', name: 'RZ 1100+', category: 'Inverter', warrantyMonths: 60 },
+  { id: 'p2', name: 'RZ 1350+', category: 'Inverter', warrantyMonths: 60 },
+  { id: 'p3', name: 'RZ 1550+', category: 'Inverter', warrantyMonths: 60 },
+  { id: 'p4', name: 'RZ 200Ah Battery', category: 'Battery', warrantyMonths: 60 },
+  { id: 'p5', name: 'RZ 150Ah Battery', category: 'Battery', warrantyMonths: 60 },
 ];
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
@@ -1197,7 +1293,7 @@ function ManufacturedUnitsSection() {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!form.productId)     errs.productId     = 'Please select a product.';
+    if (!form.productId) errs.productId = 'Please select a product.';
     if (!form.productNumber.trim()) errs.productNumber = 'Product number is required.';
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
