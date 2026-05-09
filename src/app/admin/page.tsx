@@ -48,7 +48,8 @@ import type { AdminProduct } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { Role, Can, hasPermission } from '@/lib/rbac';
+import { Role, Can, hasPermission, toDisplayRole } from '@/lib/rbac';
+import { AdminProfile, getInitials } from '@/lib/adminService';
 import { generateSecurePassword } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -64,11 +65,8 @@ type AdminUser = {
 
 export default function AdminPage() {
   const { toast } = useToast();
-  const { user, loading: authLoading, logout } = useAuth();
-  
-  // MOCK ROLE FOR TESTING: You can switch this state to 'Product Manager' or 'Production Unit' to test RBAC logic.
-  const [mockRole, setMockRole] = useState<Role>('Manager');
-  
+  const { user, adminProfile, loading: authLoading, accessDenied, logout } = useAuth();
+
   const [activeTab, setActiveTab] = useState('profile');
 
   // Login State
@@ -79,9 +77,7 @@ export default function AdminPage() {
   });
 
   // Data State
-  const [admins, setAdmins] = useState<AdminUser[]>([
-    { id: '1', name: 'Amal Raj T P', email: 'amal@revopz.com', role: 'Manager' }
-  ]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -89,112 +85,45 @@ export default function AdminPage() {
 
   // Initialize and Sync Data
   useEffect(() => {
-    // Sync Jobs
     const savedJobs = localStorage.getItem('revopz_jobs');
-    if (savedJobs) {
-      setJobs(JSON.parse(savedJobs));
-    } else {
-      setJobs(INITIAL_JOBS);
-      localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS));
-    }
+    if (savedJobs) { setJobs(JSON.parse(savedJobs)); } else { setJobs(INITIAL_JOBS); localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS)); }
 
-    // Sync Applications
     const savedApps = localStorage.getItem('revopz_applications');
-    if (savedApps) {
-      setApplications(JSON.parse(savedApps));
-    } else {
-      setApplications(INITIAL_APPLICATIONS);
-      localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS));
-    }
+    if (savedApps) { setApplications(JSON.parse(savedApps)); } else { setApplications(INITIAL_APPLICATIONS); localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS)); }
 
-    // Sync Warranties
     const savedWarranties = localStorage.getItem('revopz_warranties');
-    if (savedWarranties) {
-      setWarranties(JSON.parse(savedWarranties));
-    } else {
-      setWarranties(INITIAL_WARRANTIES);
-      localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES));
-    }
+    if (savedWarranties) { setWarranties(JSON.parse(savedWarranties)); } else { setWarranties(INITIAL_WARRANTIES); localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES)); }
   }, []);
 
-  const handleUpdateJobs = (newJobs: Job[]) => {
-    setJobs(newJobs);
-    localStorage.setItem('revopz_jobs', JSON.stringify(newJobs));
-  };
+  // Seed local admin list from Firestore profile once loaded
+  useEffect(() => {
+    if (adminProfile) {
+      setAdmins([{ id: adminProfile.uid, name: adminProfile.name, email: adminProfile.email, role: toDisplayRole(adminProfile.role) }]);
+    }
+  }, [adminProfile]);
 
-  const handleUpdateApps = (newApps: JobApplication[]) => {
-    setApplications(newApps);
-    localStorage.setItem('revopz_applications', JSON.stringify(newApps));
-  };
-
-  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => {
-    setWarranties(newWarranties);
-    localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties));
-  };
+  const handleUpdateJobs = (newJobs: Job[]) => { setJobs(newJobs); localStorage.setItem('revopz_jobs', JSON.stringify(newJobs)); };
+  const handleUpdateApps = (newApps: JobApplication[]) => { setApplications(newApps); localStorage.setItem('revopz_applications', JSON.stringify(newApps)); };
+  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => { setWarranties(newWarranties); localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties)); };
 
   const onLoginSubmit = async (data: LoginFormData) => {
     try {
       setIsLoggingIn(true);
-      console.log(`[Auth Debug] Attempting sign in for: ${data.email}`);
-
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      console.log(`[Auth Debug] Login successful for: ${userCredential.user.email}`);
-      // onAuthStateChanged in AuthContext will pick up the new user automatically.
-      // The page will re-render from !user → authenticated dashboard instantly.
-      toast({ title: "Login Successful", description: "Welcome to the REVOPZ Admin Panel." });
-
+      console.log(`[Auth] Login successful for: ${userCredential.user.email}`);
+      // AuthContext will fetch adminProfile from Firestore automatically via onAuthStateChanged
     } catch (error: any) {
-      console.warn("[Auth] Sign-in failed. Code:", error.code);
-
-      if (error.code === 'auth/user-not-found') {
-        // Legacy SDK: email not registered
-        toast({
-          title: "Access Denied",
-          description: "You don't have any access.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/wrong-password') {
-        // Legacy SDK: email exists but password wrong
-        toast({
-          title: "Incorrect Password",
-          description: "Incorrect password. Please contact the super admin.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/invalid-credential') {
-        // Modern Firebase SDK (v9+): covers both wrong email AND wrong password.
-        // We cannot distinguish them without email enumeration (which is a security risk).
-        // Show a combined message — the most common case here is wrong password
-        // since this is an admin-only system with a known fixed email.
-        toast({
-          title: "Login Failed",
-          description: "Invalid credentials. Please check your email and password, or contact the super admin.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/invalid-email') {
-        toast({
-          title: "Invalid Email",
-          description: "The email address format is not valid.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/too-many-requests') {
-        toast({
-          title: "Account Temporarily Locked",
-          description: "Too many failed attempts. Please try again later or reset your password.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/network-request-failed') {
-        toast({
-          title: "Network Error",
-          description: "Something went wrong. Please check your internet connection and try again.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Something went wrong. Please try again later.",
-          variant: "destructive",
-        });
-      }
+      console.warn('[Auth] Sign-in failed. Code:', error.code);
+      const messages: Record<string, { title: string; description: string }> = {
+        'auth/user-not-found':       { title: 'Access Denied',            description: "You don't have admin access." },
+        'auth/wrong-password':       { title: 'Incorrect Password',       description: 'Incorrect password. Please contact the super admin.' },
+        'auth/invalid-credential':   { title: 'Login Failed',             description: 'Invalid credentials. Please check your email and password.' },
+        'auth/invalid-email':        { title: 'Invalid Email',            description: 'The email address format is not valid.' },
+        'auth/too-many-requests':    { title: 'Account Temporarily Locked', description: 'Too many failed attempts. Please try again later.' },
+        'auth/network-request-failed': { title: 'Network Error',          description: 'Check your internet connection and try again.' },
+      };
+      const msg = messages[error.code] ?? { title: 'Error', description: 'Something went wrong. Please try again later.' };
+      toast({ ...msg, variant: 'destructive' });
     } finally {
       setIsLoggingIn(false);
     }
@@ -202,18 +131,51 @@ export default function AdminPage() {
 
   const handleLogout = async () => {
     await logout();
-    toast({ title: "Logged Out", description: "You have been logged out of the admin panel." });
+    toast({ title: 'Logged Out', description: 'You have been logged out of the admin panel.' });
   };
 
+  // ── Auth loading screen ──────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 animate-pulse">
+          <LayoutDashboard className="text-primary" />
+        </div>
+        <div className="space-y-2 text-center">
+          <div className="h-3 w-32 bg-muted rounded-full animate-pulse mx-auto" />
+          <div className="h-2 w-24 bg-muted/50 rounded-full animate-pulse mx-auto" />
+        </div>
+        <Loader2 className="h-6 w-6 text-primary animate-spin mt-2" />
       </div>
     );
   }
 
-  if (!user) {
+  // ── Access denied screen (valid Firebase user but no Firestore admin doc) ─
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md border-destructive/30 bg-card/50 backdrop-blur-sm">
+          <CardHeader className="space-y-1 text-center">
+            <div className="mx-auto h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4 border border-destructive/20">
+              <ShieldCheck className="text-destructive" size={28} />
+            </div>
+            <CardTitle className="text-xl font-headline text-destructive">Access Denied</CardTitle>
+            <CardDescription>
+              Your account is not registered as an admin or has been deactivated. Contact your system administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Button variant="outline" className="w-full border-destructive/30 hover:bg-destructive/10" onClick={handleLogout}>
+              <LogOut size={16} className="mr-2" /> Sign Out
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Login screen ─────────────────────────────────────────────────────────
+  if (!user || !adminProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md border-primary/20 bg-card/50 backdrop-blur-sm">
@@ -251,7 +213,7 @@ export default function AdminPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90 transition-all" disabled={isLoggingIn}>
-                {isLoggingIn ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : "Sign In"}
+                {isLoggingIn ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : 'Sign In'}
               </Button>
             </CardFooter>
           </form>
@@ -260,6 +222,15 @@ export default function AdminPage() {
     );
   }
 
+  // ── Live data from Firestore ───────────────────────────────────────────────
+  const permissions = adminProfile.permissions;
+  const displayRole = toDisplayRole(adminProfile.role);
+  const initials = getInitials(adminProfile.name);
+
+  // Auto-redirect Production Unit to the only permitted tab
+  const resolvedTab = !hasPermission(permissions, 'manage_admins') && activeTab === 'profile' ? 'units' : activeTab;
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       <aside className="w-full md:w-64 border-r bg-card flex flex-col">
@@ -271,58 +242,27 @@ export default function AdminPage() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <Can role={mockRole} perform="manage_admins">
-            <SidebarButton
-              active={activeTab === 'profile'}
-              onClick={() => setActiveTab('profile')}
-              icon={<UserCircle size={20} />}
-              label="Admin Profile"
-            />
+          <Can permissions={permissions} perform="manage_admins">
+            <SidebarButton active={resolvedTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserCircle size={20} />} label="Admin Profile" />
           </Can>
-          <Can role={mockRole} perform="manage_products">
-            <SidebarButton
-              active={activeTab === 'products'}
-              onClick={() => setActiveTab('products')}
-              icon={<Package size={20} />}
-              label="Product Mgmt"
-            />
+          <Can permissions={permissions} perform="manage_products">
+            <SidebarButton active={resolvedTab === 'products'} onClick={() => setActiveTab('products')} icon={<Package size={20} />} label="Product Mgmt" />
           </Can>
-          <Can role={mockRole} perform="manage_units">
-            <SidebarButton
-              active={activeTab === 'units'}
-              onClick={() => setActiveTab('units')}
-              icon={<Factory size={20} />}
-              label="Manufactured Units"
-            />
+          <Can permissions={permissions} perform="manage_units">
+            <SidebarButton active={resolvedTab === 'units'} onClick={() => setActiveTab('units')} icon={<Factory size={20} />} label="Manufactured Units" />
           </Can>
-          <Can role={mockRole} perform="view_warranty">
-            <SidebarButton
-              active={activeTab === 'warranty'}
-              onClick={() => setActiveTab('warranty')}
-              icon={<ShieldCheck size={20} />}
-              label="Warranty Mgmt"
-            />
+          <Can permissions={permissions} perform="view_warranty">
+            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => setActiveTab('warranty')} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
           </Can>
-          <Can role={mockRole} perform="manage_careers">
-            <SidebarButton
-              active={activeTab === 'careers'}
-              onClick={() => setActiveTab('careers')}
-              icon={<Briefcase size={20} />}
-              label="Career Mgmt"
-            />
-            <SidebarButton
-              active={activeTab === 'applications'}
-              onClick={() => setActiveTab('applications')}
-              icon={<FileText size={20} />}
-              label="Applications"
-            />
+          <Can permissions={permissions} perform="manage_careers">
+            <SidebarButton active={resolvedTab === 'careers'} onClick={() => setActiveTab('careers')} icon={<Briefcase size={20} />} label="Career Mgmt" />
+            <SidebarButton active={resolvedTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<FileText size={20} />} label="Applications" />
           </Can>
         </nav>
 
         <div className="p-4 border-t">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
-            <LogOut size={20} className="mr-3" />
-            Logout
+            <LogOut size={20} className="mr-3" /> Logout
           </Button>
         </div>
       </aside>
@@ -332,55 +272,45 @@ export default function AdminPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold font-headline capitalize">
-                {activeTab === 'profile' ? 'Profile Management' :
-                  activeTab === 'products' ? 'Product Catalog' :
-                    activeTab === 'units' ? 'Manufactured Units' :
-                      activeTab === 'warranty' ? 'Warranty Registry' :
-                        activeTab === 'careers' ? 'Career Management' : 'Job Applications'}
+                {resolvedTab === 'profile' ? 'Profile Management' :
+                  resolvedTab === 'products' ? 'Product Catalog' :
+                    resolvedTab === 'units' ? 'Manufactured Units' :
+                      resolvedTab === 'warranty' ? 'Warranty Registry' :
+                        resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">
-                {activeTab === 'units'
-                  ? 'Manage manufactured products and track warranty-ready units.'
-                  : 'Manage your REVOPZ system operations and data.'}
+                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' : 'Manage your REVOPZ system operations and data.'}
               </p>
             </div>
 
+            {/* Live admin profile badge (top-right) */}
             <div className="flex items-center gap-3">
-              {/* Role Switcher for Testing */}
-              <Select value={mockRole} onValueChange={(v: Role) => setMockRole(v)}>
-                <SelectTrigger className="w-[180px] h-8 text-xs bg-primary/10 border-primary/20">
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="Manager">Mock: Manager</SelectItem>
-                  <SelectItem value="Product Manager">Mock: Product Mgr</SelectItem>
-                  <SelectItem value="Production Unit">Mock: Prod Unit</SelectItem>
-                </SelectContent>
-              </Select>
-
               <div className="hidden md:flex flex-col items-end">
-                <span className="font-bold text-sm">Amal Raj T P</span>
-                <span className="text-xs text-primary font-medium">{mockRole}</span>
+                <span className="font-bold text-sm">{adminProfile.name}</span>
+                <span className="text-xs text-primary font-medium">{displayRole}</span>
               </div>
-              <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold">
-                AR
+              <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold select-none">
+                {initials}
               </div>
             </div>
           </div>
 
           <div className="grid gap-6">
-            {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} mockRole={mockRole} />}
-            {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} mockRole={mockRole} />}
-            {activeTab === 'units' && <ManufacturedUnitsSection mockRole={mockRole} />}
-            {activeTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} mockRole={mockRole} />}
-            {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} mockRole={mockRole} />}
-            {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} mockRole={mockRole} />}
+            {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
+            {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
+            {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} />}
+            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} permissions={permissions} />}
+            {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
+            {resolvedTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} permissions={permissions} />}
           </div>
         </div>
       </main>
     </div>
   );
 }
+
+
+
 
 function SidebarButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
@@ -397,7 +327,7 @@ function SidebarButton({ active, onClick, icon, label }: { active: boolean, onCl
   );
 }
 
-function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>, mockRole: Role }) {
+function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>, permissions: string[], adminProfile: AdminProfile }) {
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -493,19 +423,19 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
           <CardContent className="space-y-4">
             <div className="flex flex-col items-center py-4">
               <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center text-2xl font-bold text-white mb-4 border-4 border-background">
-                AR
+                {getInitials(adminProfile.name)}
               </div>
-              <h3 className="font-bold text-xl">Amal Raj T P</h3>
-              <p className="text-muted-foreground text-sm">amal@revopz.com</p>
-              <div className="mt-2">{getRoleBadge(mockRole)}</div>
+              <h3 className="font-bold text-xl">{adminProfile.name}</h3>
+              <p className="text-muted-foreground text-sm">{adminProfile.email}</p>
+              <div className="mt-2">{getRoleBadge(toDisplayRole(adminProfile.role))}</div>
             </div>
             <div className="pt-4 border-t border-primary/10 space-y-2">
               <p className="text-xs font-bold uppercase text-muted-foreground">Permissions</p>
               <ul className="text-sm space-y-1">
-                {hasPermission(mockRole, 'manage_admins') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Manage Admins</li>}
-                {hasPermission(mockRole, 'manage_products') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Product Catalog</li>}
-                {hasPermission(mockRole, 'manage_units') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Production Units</li>}
-                {hasPermission(mockRole, 'view_warranty') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> View Warranties</li>}
+                {hasPermission(permissions, 'manage_admins') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Manage Admins</li>}
+                {hasPermission(permissions, 'manage_products') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Product Catalog</li>}
+                {hasPermission(permissions, 'manage_units') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Production Units</li>}
+                {hasPermission(permissions, 'view_warranty') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> View Warranties</li>}
               </ul>
             </div>
           </CardContent>
@@ -517,7 +447,7 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
               <CardTitle className="text-lg">System Administrators</CardTitle>
               <CardDescription>Manage team access and roles.</CardDescription>
             </div>
-            <Can role={mockRole} perform="manage_admins">
+            <Can permissions={permissions} perform="manage_admins">
               <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
                 if (!open) { reset(); setShowPassword(false); }
                 setIsAddDialogOpen(open);
@@ -669,7 +599,7 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <Can role={mockRole} perform="reset_passwords"><TableHead className="text-right">Actions</TableHead></Can>
+                  <Can permissions={permissions} perform="reset_passwords"><TableHead className="text-right">Actions</TableHead></Can>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -680,7 +610,7 @@ function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], 
                     <TableCell>
                       {getRoleBadge(admin.role)}
                     </TableCell>
-                    <Can role={mockRole} perform="reset_passwords">
+                    <Can permissions={permissions} perform="reset_passwords">
                       <TableCell className="text-right">
                         <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
                           <DialogTrigger asChild>
@@ -774,7 +704,7 @@ function adminProductToProduct(ap: AdminProduct, existingProduct?: Product): Pro
 
 // ── ProductSection ───────────────────────────────────────────────────────────
 
-function ProductSection({ products, setProducts, mockRole }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>>, mockRole: Role }) {
+function ProductSection({ products, setProducts, permissions }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>>, permissions: string[] }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -821,7 +751,7 @@ function ProductSection({ products, setProducts, mockRole }: { products: Product
           <CardTitle className="text-lg">Product Catalog</CardTitle>
           <CardDescription>Create and manage your full product listings.</CardDescription>
         </div>
-        <Can role={mockRole} perform="manage_products">
+        <Can permissions={permissions} perform="manage_products">
           <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
             <Plus size={16} className="mr-2" /> Add Product
           </Button>
@@ -862,7 +792,7 @@ function ProductSection({ products, setProducts, mockRole }: { products: Product
               <TableHead>Product</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Power Rating</TableHead>
-              <Can role={mockRole} perform="manage_products">
+              <Can permissions={permissions} perform="manage_products">
                 <TableHead className="text-right">Actions</TableHead>
               </Can>
             </TableRow>
@@ -882,7 +812,7 @@ function ProductSection({ products, setProducts, mockRole }: { products: Product
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
                 <TableCell className="text-muted-foreground">{product.powerRating}</TableCell>
-                <Can role={mockRole} perform="manage_products">
+                <Can permissions={permissions} perform="manage_products">
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
@@ -917,7 +847,7 @@ function ProductSection({ products, setProducts, mockRole }: { products: Product
   );
 }
 
-function WarrantyManagementSection({ warranties, setWarranties, products, mockRole }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[], mockRole: Role }) {
+function WarrantyManagementSection({ warranties, setWarranties, products, permissions }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[], permissions: string[] }) {
   const { toast } = useToast();
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1052,7 +982,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products, mockRo
   );
 }
 
-function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], setJobs: (jobs: Job[]) => void, mockRole: Role }) {
+function CareerManagementSection({ jobs, setJobs, permissions }: { jobs: Job[], setJobs: (jobs: Job[]) => void, permissions: string[] }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
@@ -1116,7 +1046,7 @@ function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], set
           <CardTitle className="text-lg">Job Listings</CardTitle>
           <CardDescription>Manage open positions for REVOPZ.</CardDescription>
         </div>
-        <Can role={mockRole} perform="manage_careers">
+        <Can permissions={permissions} perform="manage_careers">
           <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
             <Plus size={16} className="mr-2" /> Add Job
           </Button>
@@ -1168,7 +1098,7 @@ function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], set
               <TableHead>Title</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Type</TableHead>
-              <Can role={mockRole} perform="manage_careers"><TableHead className="text-right">Actions</TableHead></Can>
+              <Can permissions={permissions} perform="manage_careers"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1179,7 +1109,7 @@ function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], set
                 <TableCell>
                   <Badge variant="secondary">{job.type}</Badge>
                 </TableCell>
-                <Can role={mockRole} perform="manage_careers">
+                <Can permissions={permissions} perform="manage_careers">
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
@@ -1214,7 +1144,7 @@ function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], set
   );
 }
 
-function ApplicationsSection({ applications, setApplications, mockRole }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void, mockRole: Role }) {
+function ApplicationsSection({ applications, setApplications, permissions }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void, permissions: string[] }) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -1344,7 +1274,7 @@ function ApplicationsSection({ applications, setApplications, mockRole }: { appl
                                   "{selectedApp.message}"
                                 </div>
                               </div>
-                              <Can role={mockRole} perform="manage_careers">
+                              <Can permissions={permissions} perform="manage_careers">
                                 <div className="space-y-2">
                                   <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
                                   <Select
@@ -1368,7 +1298,7 @@ function ApplicationsSection({ applications, setApplications, mockRole }: { appl
                         </DialogContent>
                       </Dialog>
 
-                      <Can role={mockRole} perform="manage_careers">
+                      <Can permissions={permissions} perform="manage_careers">
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
@@ -1434,7 +1364,7 @@ const MOCK_CATALOG: MockCatalogProduct[] = [
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 
-function ManufacturedUnitsSection({ mockRole }: { mockRole: Role }) {
+function ManufacturedUnitsSection({ permissions }: { permissions: string[] }) {
   const { toast } = useToast();
   const [units, setUnits] = useState<ManufacturedUnit[]>([
     {
@@ -1547,7 +1477,7 @@ function ManufacturedUnitsSection({ mockRole }: { mockRole: Role }) {
               className="pl-9 w-56"
             />
           </div>
-          <Can role={mockRole} perform="manage_units">
+          <Can permissions={permissions} perform="manage_units">
             <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0">
               <Plus size={16} className="mr-2" /> Add Unit
             </Button>
@@ -1667,7 +1597,7 @@ function ManufacturedUnitsSection({ mockRole }: { mockRole: Role }) {
               <TableHead>Mfg. Date</TableHead>
               <TableHead>Warranty (Mo.)</TableHead>
               <TableHead>Status</TableHead>
-              <Can role={mockRole} perform="manage_units"><TableHead className="text-right">Actions</TableHead></Can>
+              <Can permissions={permissions} perform="manage_units"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1683,7 +1613,7 @@ function ManufacturedUnitsSection({ mockRole }: { mockRole: Role }) {
                     ? <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>
                     : <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>}
                 </TableCell>
-                <Can role={mockRole} perform="manage_units">
+                <Can permissions={permissions} perform="manage_units">
                   <TableCell className="text-right">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
