@@ -1,5 +1,5 @@
 import React from 'react';
-import type { FirestoreRole } from '@/lib/adminService';
+import type { AdminProfile, FirestoreRole } from '@/lib/adminService';
 
 // ── Re-export FirestoreRole so consumers only need one import ─────────────────
 export type { FirestoreRole };
@@ -80,6 +80,20 @@ export function hasPermission(
 ): boolean {
   if (!permissions || permissions.length === 0) return false;
   return permissions.includes(permission);
+}
+
+export function getEffectivePermissions(adminProfile: AdminProfile): Permission[] {
+  const rolePermissions = ROLE_PERMISSIONS[adminProfile.role] ?? [];
+  const allowedStoredPermissions = adminProfile.permissions.filter(
+    (permission): permission is Permission =>
+      rolePermissions.includes(permission as Permission)
+  );
+
+  return Array.from(new Set([...rolePermissions, ...allowedStoredPermissions]));
+}
+
+export function canAccessManufacturedUnits(role: FirestoreRole): boolean {
+  return ['manager', 'product_manager', 'production_unit'].includes(role);
 }
 
 // ── <Can> component ───────────────────────────────────────────────────────────

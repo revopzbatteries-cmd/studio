@@ -40,6 +40,16 @@ const todayDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+export const PRODUCT_NUMBER_PATTERN = /^[A-Z0-9-]+$/;
+
+export const normalizeProductNumber = (value: string) => value.trim().toUpperCase();
+
+export const isValidProductNumber = (value: string) => {
+  const normalizedValue = normalizeProductNumber(value);
+
+  return normalizedValue.length >= 5 && PRODUCT_NUMBER_PATTERN.test(normalizedValue);
+};
+
 export const addManufacturedUnitSchema = z.object({
   productName: z.string()
     .trim()
@@ -48,21 +58,24 @@ export const addManufacturedUnitSchema = z.object({
   productNumber: z.string()
     .trim()
     .min(1, "Product number is required")
+    .min(5, "Product number must be at least 5 characters")
     .transform(value => value.toUpperCase())
-    .refine(value => !/\s/.test(value), "Product number cannot contain spaces"),
+    .refine(value => !/\s/.test(value), "Product number cannot contain spaces")
+    .refine(value => PRODUCT_NUMBER_PATTERN.test(value), "Use only letters, numbers, and hyphens"),
   category: z.enum(['Inverter', 'Battery', 'Solar', 'Other'], {
     errorMap: () => ({ message: "Please select a valid category" })
   }),
-  manufacturingDate: z.string()
-    .min(1, "Manufacturing date is required")
+  manufacturedDate: z.string()
+    .min(1, "Manufactured date is required")
     .refine(value => !Number.isNaN(new Date(`${value}T00:00:00`).getTime()), "Please enter a valid date")
-    .refine(value => value <= todayDate(), "Manufacturing date cannot be in the future"),
+    .refine(value => value <= todayDate(), "Manufactured date cannot be in the future"),
   warrantyMonths: z.coerce.number({
     required_error: "Warranty period is required",
     invalid_type_error: "Warranty period must be a number"
   })
     .int("Warranty period must be a whole number")
-    .positive("Warranty period must be a positive number"),
+    .positive("Warranty period must be a positive number")
+    .max(240, "Warranty period cannot exceed 240 months"),
   status: z.enum(['Ready', 'Registered'], {
     errorMap: () => ({ message: "Please select a valid status" })
   }),

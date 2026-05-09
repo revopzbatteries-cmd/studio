@@ -49,15 +49,15 @@ import type { AdminProduct } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { Role, Can, hasPermission, toDisplayRole } from '@/lib/rbac';
+import { Role, Can, hasPermission, toDisplayRole, getEffectivePermissions } from '@/lib/rbac';
 import { AdminProfile, getInitials } from '@/lib/adminService';
 import {
   addManufacturedUnit,
-  subscribeToManufacturedUnits,
+  manufacturedUnitNumberExists,
   type ManufacturedUnit,
   type ManufacturedUnitCategory,
-  type ManufacturedUnitStatus,
 } from '@/lib/manufacturedUnits';
+import { useManufacturedUnits } from '@/hooks/useManufacturedUnits';
 import { generateSecurePassword } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -65,6 +65,7 @@ import {
   loginSchema,
   addAdminSchema,
   addManufacturedUnitSchema,
+  normalizeProductNumber,
   type LoginFormData,
   type AddAdminFormData,
   type AddManufacturedUnitFormData,
@@ -239,7 +240,7 @@ export default function AdminPage() {
   }
 
   // ── Live data from Firestore ───────────────────────────────────────────────
-  const permissions = adminProfile.permissions;
+  const permissions = getEffectivePermissions(adminProfile);
   const displayRole = toDisplayRole(adminProfile.role);
   const initials = getInitials(adminProfile.name);
 
@@ -1353,7 +1354,6 @@ function ApplicationsSection({ applications, setApplications, permissions }: { a
 // ── ManufacturedUnitsSection ─────────────────────────────────────────────────
 
 const UNIT_CATEGORIES: ManufacturedUnitCategory[] = ['Inverter', 'Battery', 'Solar', 'Other'];
-const UNIT_STATUSES: ManufacturedUnitStatus[] = ['Ready', 'Registered'];
 
 const getTodayInputDate = () => {
   const now = new Date();
@@ -1367,15 +1367,15 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const { toast } = useToast();
 
   const canAdd    = hasPermission(permissions, 'add_units');
-  const [units, setUnits] = useState<ManufacturedUnit[]>([]);
-  const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen]   = useState(false);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const { filteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
   const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
     category: 'Inverter',
-    manufacturingDate: getTodayInputDate(),
+    manufacturedDate: getTodayInputDate(),
     warrantyMonths: 60,
     status: 'Ready',
   };
@@ -1387,39 +1387,29 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
     watch: watchUnitForm,
     setValue: setUnitValue,
     setError: setUnitError,
-    formState: { errors: unitErrors, isSubmitting },
+    clearErrors: clearUnitErrors,
+    formState: { errors: unitErrors, isSubmitting, isValid },
   } = useForm<AddManufacturedUnitFormData>({
     resolver: zodResolver(addManufacturedUnitSchema),
+    mode: 'onChange',
     defaultValues: defaultUnitFormValues,
   });
 
   const watchedCategory = watchUnitForm('category');
-  const watchedStatus = watchUnitForm('status');
 
   useEffect(() => {
-    setIsLoadingUnits(true);
+    if (!unitsError) return;
 
-    const unsubscribe = subscribeToManufacturedUnits(
-      nextUnits => {
-        setUnits(nextUnits);
-        setIsLoadingUnits(false);
-      },
-      error => {
-        console.error('[ManufacturedUnits] Firestore subscription failed:', error);
-        setIsLoadingUnits(false);
-        toast({
-          title: 'Unable to load units',
-          description: 'Manufactured units could not be loaded. Please try again.',
-          variant: 'destructive',
-        });
-      }
-    );
-
-    return unsubscribe;
-  }, [toast]);
+    console.error('[ManufacturedUnits] Firestore subscription failed:', unitsError);
+    toast({
+      title: 'Unable to load units',
+      description: 'Manufactured units could not be loaded. Please try again.',
+      variant: 'destructive',
+    });
+  }, [toast, unitsError]);
 
   const openAddDialog = () => {
-    resetUnitForm({ ...defaultUnitFormValues, manufacturingDate: getTodayInputDate() });
+    resetUnitForm({ ...defaultUnitFormValues, manufacturedDate: getTodayInputDate() });
     setIsDialogOpen(true);
   };
 
@@ -1437,20 +1427,33 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       return;
     }
 
-    const normalizedProductNumber = data.productNumber.trim().toUpperCase();
-    if (units.some(unit => unit.productNumber.toUpperCase() === normalizedProductNumber)) {
-      setUnitError('productNumber', {
-        type: 'manual',
-        message: 'This product number already exists.',
-      });
-      return;
-    }
+    const normalizedProductNumber = normalizeProductNumber(data.productNumber);
 
+    setIsCheckingDuplicate(true);
     try {
-      await addManufacturedUnit({
-        ...data,
+      const exists = await manufacturedUnitNumberExists(normalizedProductNumber);
+
+      if (exists) {
+        setUnitError('productNumber', {
+          type: 'manual',
+          message: 'This product number already exists.',
+        });
+        toast({
+          title: 'Product number already exists.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const productNumber = await addManufacturedUnit({
+        productName: data.productName,
         productNumber: normalizedProductNumber,
+        category: data.category,
+        manufacturedDate: data.manufacturedDate,
+        warrantyMonths: data.warrantyMonths,
+        status: data.status,
         createdBy: adminProfile.uid,
+        createdByName: adminProfile.name,
         createdByRole: adminProfile.role,
       });
 
@@ -1458,7 +1461,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       resetUnitForm(defaultUnitFormValues);
       toast({
         title: 'Unit Added',
-        description: `${data.productName.trim()} (${normalizedProductNumber}) has been recorded.`,
+        description: `${data.productName.trim()} (${productNumber}) has been recorded.`,
       });
     } catch (error: any) {
       const message = error?.message ?? 'Manufactured unit could not be added. Please try again.';
@@ -1466,25 +1469,23 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         setUnitError('productNumber', { type: 'manual', message });
       }
       toast({
-        title: 'Add failed',
-        description: message,
+        title: message === 'Product number already exists.' ? message : 'Add failed',
+        description: message === 'Product number already exists.' ? undefined : message,
         variant: 'destructive',
       });
+    } finally {
+      setIsCheckingDuplicate(false);
     }
   };
 
-  const filtered = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return units;
+  const formatDate = (iso: string) => {
+    if (!iso) return 'Not set';
 
-    return units.filter(u =>
-      u.productNumber.toLowerCase().includes(term) ||
-      u.productName.toLowerCase().includes(term)
-    );
-  }, [searchTerm, units]);
+    const date = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return iso;
 
-  const formatDate = (iso: string) =>
-    new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   const statusBadge = (s: ManufacturedUnit['status']) => {
     if (s === 'Ready')      return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
@@ -1517,7 +1518,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
           </div>
           {canAdd && (
             <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
-              <Plus size={16} className="mr-2" /> Add Manufactured Unit
+              <Plus size={16} className="mr-2" /> Add Unit
             </Button>
           )}
         </div>
@@ -1528,10 +1529,10 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-headline flex items-center gap-2">
-              <Factory size={20} className="text-primary" /> Add Manufactured Unit
+              <Factory size={20} className="text-primary" /> Add Unit
             </DialogTitle>
             <DialogDescription>
-              Fill in the unit details. All fields are required. The product number must be unique.
+              Fill in the unit details and enter the product serial number.
             </DialogDescription>
           </DialogHeader>
 
@@ -1553,20 +1554,28 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
             {/* Product Number */}
             <div className="space-y-1">
-              <Label htmlFor="unit-number">Product / Serial Number <span className="text-destructive">*</span></Label>
-              <Input
-                id="unit-number"
-                placeholder="e.g. RZ1350-001"
-                {...registerUnit('productNumber', {
-                  onChange: event => {
-                    event.target.value = event.target.value.toUpperCase().replace(/\s/g, '');
-                  },
-                })}
-                className={`font-mono ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-              />
+              <Label htmlFor="unit-number">Product Number (Serial Number) <span className="text-destructive">*</span></Label>
+              <div className="relative">
+                <Input
+                  id="unit-number"
+                  placeholder="e.g. RZ1350-001"
+                  {...registerUnit('productNumber', {
+                    onChange: event => {
+                      event.target.value = event.target.value.toUpperCase();
+                      if (unitErrors.productNumber?.type === 'manual') {
+                        clearUnitErrors('productNumber');
+                      }
+                    },
+                  })}
+                  className={`font-mono pr-10 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                />
+                {isCheckingDuplicate && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
+              </div>
               {unitErrors.productNumber
                 ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
-                : <p className="text-xs text-muted-foreground/70 mt-1">Unique serial number for tracking.</p>
+                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, and hyphens only.</p>
               }
             </div>
 
@@ -1586,56 +1595,37 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               )}
             </div>
 
-            {/* Manufacturing Date */}
+            {/* Manufactured Date */}
             <div className="space-y-1">
               <Label htmlFor="unit-date">
-                Manufacturing Date <span className="text-destructive">*</span>
+                Manufactured Date <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="unit-date"
                 type="date"
                 max={getTodayInputDate()}
-                {...registerUnit('manufacturingDate')}
-                className={unitErrors.manufacturingDate ? 'border-destructive focus-visible:ring-destructive' : ''}
+                {...registerUnit('manufacturedDate')}
+                className={unitErrors.manufacturedDate ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
-              {unitErrors.manufacturingDate && (
-                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.manufacturingDate.message}</p>
+              {unitErrors.manufacturedDate && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.manufacturedDate.message}</p>
               )}
             </div>
 
-            {/* Warranty + Status — 2-column row */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Warranty */}
-              <div className="space-y-1">
-                <Label htmlFor="unit-warranty">Warranty (Months) <span className="text-destructive">*</span></Label>
-                <Input
-                  id="unit-warranty"
-                  type="number"
-                  min={1}
-                  step={1}
-                  {...registerUnit('warrantyMonths')}
-                  className={unitErrors.warrantyMonths ? 'border-destructive focus-visible:ring-destructive' : ''}
-                />
-                {unitErrors.warrantyMonths && (
-                  <p className="text-xs text-destructive">{unitErrors.warrantyMonths.message}</p>
-                )}
-              </div>
-
-              {/* Status */}
-              <div className="space-y-1">
-                <Label>Status <span className="text-destructive">*</span></Label>
-                <Select value={watchedStatus} onValueChange={value => setUnitValue('status', value as ManufacturedUnitStatus, { shouldDirty: true, shouldValidate: true })}>
-                  <SelectTrigger className={unitErrors.status ? 'border-destructive' : ''}>
-                    <SelectValue placeholder="Select status…" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {UNIT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {unitErrors.status && (
-                  <p className="text-xs text-destructive">{unitErrors.status.message}</p>
-                )}
-              </div>
+            {/* Warranty */}
+            <div className="space-y-1">
+              <Label htmlFor="unit-warranty">Warranty (Months) <span className="text-destructive">*</span></Label>
+              <Input
+                id="unit-warranty"
+                type="number"
+                min={1}
+                step={1}
+                {...registerUnit('warrantyMonths')}
+                className={unitErrors.warrantyMonths ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {unitErrors.warrantyMonths && (
+                <p className="text-xs text-destructive">{unitErrors.warrantyMonths.message}</p>
+              )}
             </div>
 
             <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
@@ -1644,11 +1634,13 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={!isValid || isSubmitting || isCheckingDuplicate}
                 className="bg-primary hover:bg-primary/90 min-w-[120px]"
               >
-                {isSubmitting
-                  ? <><Loader2 size={14} className="mr-2 animate-spin" /> Saving…</>
+                {isCheckingDuplicate
+                  ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
+                  : isSubmitting
+                    ? <><Loader2 size={14} className="mr-2 animate-spin" /> Saving...</>
                   : <><Factory size={16} className="mr-2" /> Add Unit</>}
               </Button>
             </DialogFooter>
@@ -1681,12 +1673,12 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                   <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                 </TableRow>
               ))
-            ) : filtered.length > 0 ? filtered.map(unit => (
+            ) : filteredUnits.length > 0 ? filteredUnits.map(unit => (
               <TableRow key={unit.id}>
                 <TableCell className="font-medium">{unit.productName}</TableCell>
                 <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
                 <TableCell className="text-muted-foreground">{unit.category}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturingDate)}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
                 <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
                 <TableCell>{statusBadge(unit.status)}</TableCell>
               </TableRow>
@@ -1696,7 +1688,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                   {searchTerm
                     ? `No units found matching "${searchTerm}".`
                     : canAdd
-                      ? 'No manufactured units yet. Click "Add Manufactured Unit" to get started.'
+                      ? 'No manufactured units yet. Click "Add Unit" to get started.'
                       : 'No manufactured units have been recorded yet.'}
                 </TableCell>
               </TableRow>

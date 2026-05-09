@@ -1,11 +1,13 @@
 import {
-  addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   where,
   type FirestoreError,
@@ -16,6 +18,7 @@ import {
 import { db } from '@/lib/firebase';
 import type { FirestoreRole } from '@/lib/adminService';
 import type { AddManufacturedUnitFormData } from '@/lib/validations';
+import { normalizeProductNumber } from '@/lib/validations';
 
 const MANUFACTURED_UNITS_COLLECTION = 'manufactured_units';
 
@@ -27,34 +30,41 @@ export interface ManufacturedUnit {
   productName: string;
   productNumber: string;
   category: ManufacturedUnitCategory;
-  manufacturingDate: string;
+  manufacturedDate: string;
   warrantyMonths: number;
   status: ManufacturedUnitStatus;
   createdAt: Timestamp | null;
   createdBy: string;
+  createdByName: string;
   createdByRole: FirestoreRole;
 }
 
 export interface CreateManufacturedUnitInput extends AddManufacturedUnitFormData {
   createdBy: string;
+  createdByName: string;
   createdByRole: FirestoreRole;
 }
 
-function mapManufacturedUnitDoc(doc: QueryDocumentSnapshot): ManufacturedUnit {
-  const data = doc.data();
+function mapManufacturedUnitDoc(docSnapshot: QueryDocumentSnapshot): ManufacturedUnit {
+  const data = docSnapshot.data();
 
   return {
-    id: doc.id,
+    id: docSnapshot.id,
     productName: data.productName ?? '',
     productNumber: data.productNumber ?? '',
     category: data.category ?? 'Other',
-    manufacturingDate: data.manufacturingDate ?? '',
+    manufacturedDate: data.manufacturedDate ?? data.manufacturingDate ?? '',
     warrantyMonths: Number(data.warrantyMonths ?? 0),
     status: data.status ?? 'Ready',
     createdAt: data.createdAt ?? null,
     createdBy: data.createdBy ?? '',
+    createdByName: data.createdByName ?? '',
     createdByRole: data.createdByRole,
   };
+}
+
+function getUnitRef(productNumber: string) {
+  return doc(db, MANUFACTURED_UNITS_COLLECTION, productNumber);
 }
 
 export function subscribeToManufacturedUnits(
@@ -74,34 +84,53 @@ export function subscribeToManufacturedUnits(
 }
 
 export async function manufacturedUnitNumberExists(productNumber: string): Promise<boolean> {
-  const normalizedNumber = productNumber.trim().toUpperCase();
+  const normalizedNumber = normalizeProductNumber(productNumber);
+  const existingDoc = await getDoc(getUnitRef(normalizedNumber));
+
+  if (existingDoc.exists()) return true;
+
   const duplicateQuery = query(
     collection(db, MANUFACTURED_UNITS_COLLECTION),
     where('productNumber', '==', normalizedNumber),
     limit(1)
   );
-
   const snapshot = await getDocs(duplicateQuery);
+
   return !snapshot.empty;
 }
 
-export async function addManufacturedUnit(input: CreateManufacturedUnitInput): Promise<void> {
-  const productNumber = input.productNumber.trim().toUpperCase();
-  const exists = await manufacturedUnitNumberExists(productNumber);
+export async function addManufacturedUnit(
+  input: CreateManufacturedUnitInput
+): Promise<string> {
+  const productNumber = normalizeProductNumber(input.productNumber);
+  const duplicateExists = await manufacturedUnitNumberExists(productNumber);
 
-  if (exists) {
-    throw new Error('A manufactured unit with this product number already exists.');
+  if (duplicateExists) {
+    throw new Error('Product number already exists.');
   }
 
-  await addDoc(collection(db, MANUFACTURED_UNITS_COLLECTION), {
-    productName: input.productName.trim(),
-    productNumber,
-    category: input.category,
-    manufacturingDate: input.manufacturingDate,
-    warrantyMonths: input.warrantyMonths,
-    status: input.status,
-    createdAt: serverTimestamp(),
-    createdBy: input.createdBy,
-    createdByRole: input.createdByRole,
+  await runTransaction(db, async transaction => {
+    const unitRef = getUnitRef(productNumber);
+    const unitSnapshot = await transaction.get(unitRef);
+
+    if (unitSnapshot.exists()) {
+      throw new Error('Product number already exists.');
+    }
+
+    transaction.set(unitRef, {
+      productName: input.productName.trim(),
+      productNameNormalized: input.productName.trim().toLowerCase(),
+      productNumber,
+      category: input.category,
+      manufacturedDate: input.manufacturedDate,
+      warrantyMonths: input.warrantyMonths,
+      status: input.status,
+      createdBy: input.createdBy,
+      createdByName: input.createdByName.trim(),
+      createdByRole: input.createdByRole,
+      createdAt: serverTimestamp(),
+    });
   });
+
+  return productNumber;
 }
