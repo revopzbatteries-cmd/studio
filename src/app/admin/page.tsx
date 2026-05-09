@@ -27,7 +27,11 @@ import {
   Factory,
   Lock,
   CalendarDays,
-  Loader2
+  Loader2,
+  Key,
+  EyeOff,
+  Copy,
+  RefreshCcw
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -44,18 +48,24 @@ import type { AdminProduct } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { Role, Can, hasPermission } from '@/lib/rbac';
+import { generateSecurePassword } from '@/lib/utils';
 
 // Types
 type AdminUser = {
   id: string;
   name: string;
   email: string;
-  role: 'Main Admin' | 'Sub Admin';
+  role: Role;
 };
 
 export default function AdminPage() {
   const { toast } = useToast();
   const { user, loading: authLoading, logout } = useAuth();
+  
+  // MOCK ROLE FOR TESTING: You can switch this state to 'Product Manager' or 'Production Unit' to test RBAC logic.
+  const [mockRole, setMockRole] = useState<Role>('Manager');
+  
   const [activeTab, setActiveTab] = useState('profile');
 
   // Login State
@@ -66,7 +76,7 @@ export default function AdminPage() {
 
   // Data State
   const [admins, setAdmins] = useState<AdminUser[]>([
-    { id: '1', name: 'Amal Raj T P', email: 'amal@revopz.com', role: 'Main Admin' }
+    { id: '1', name: 'Amal Raj T P', email: 'amal@revopz.com', role: 'Manager' }
   ]);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
@@ -286,42 +296,52 @@ export default function AdminPage() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <SidebarButton
-            active={activeTab === 'profile'}
-            onClick={() => setActiveTab('profile')}
-            icon={<UserCircle size={20} />}
-            label="Admin Profile"
-          />
-          <SidebarButton
-            active={activeTab === 'products'}
-            onClick={() => setActiveTab('products')}
-            icon={<Package size={20} />}
-            label="Product Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'units'}
-            onClick={() => setActiveTab('units')}
-            icon={<Factory size={20} />}
-            label="Manufactured Units"
-          />
-          <SidebarButton
-            active={activeTab === 'warranty'}
-            onClick={() => setActiveTab('warranty')}
-            icon={<ShieldCheck size={20} />}
-            label="Warranty Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'careers'}
-            onClick={() => setActiveTab('careers')}
-            icon={<Briefcase size={20} />}
-            label="Career Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'applications'}
-            onClick={() => setActiveTab('applications')}
-            icon={<FileText size={20} />}
-            label="Applications"
-          />
+          <Can role={mockRole} perform="manage_admins">
+            <SidebarButton
+              active={activeTab === 'profile'}
+              onClick={() => setActiveTab('profile')}
+              icon={<UserCircle size={20} />}
+              label="Admin Profile"
+            />
+          </Can>
+          <Can role={mockRole} perform="manage_products">
+            <SidebarButton
+              active={activeTab === 'products'}
+              onClick={() => setActiveTab('products')}
+              icon={<Package size={20} />}
+              label="Product Mgmt"
+            />
+          </Can>
+          <Can role={mockRole} perform="manage_units">
+            <SidebarButton
+              active={activeTab === 'units'}
+              onClick={() => setActiveTab('units')}
+              icon={<Factory size={20} />}
+              label="Manufactured Units"
+            />
+          </Can>
+          <Can role={mockRole} perform="view_warranty">
+            <SidebarButton
+              active={activeTab === 'warranty'}
+              onClick={() => setActiveTab('warranty')}
+              icon={<ShieldCheck size={20} />}
+              label="Warranty Mgmt"
+            />
+          </Can>
+          <Can role={mockRole} perform="manage_careers">
+            <SidebarButton
+              active={activeTab === 'careers'}
+              onClick={() => setActiveTab('careers')}
+              icon={<Briefcase size={20} />}
+              label="Career Mgmt"
+            />
+            <SidebarButton
+              active={activeTab === 'applications'}
+              onClick={() => setActiveTab('applications')}
+              icon={<FileText size={20} />}
+              label="Applications"
+            />
+          </Can>
         </nav>
 
         <div className="p-4 border-t">
@@ -351,9 +371,21 @@ export default function AdminPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Role Switcher for Testing */}
+              <Select value={mockRole} onValueChange={(v: Role) => setMockRole(v)}>
+                <SelectTrigger className="w-[180px] h-8 text-xs bg-primary/10 border-primary/20">
+                  <SelectValue placeholder="Select Role" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="Manager">Mock: Manager</SelectItem>
+                  <SelectItem value="Product Manager">Mock: Product Mgr</SelectItem>
+                  <SelectItem value="Production Unit">Mock: Prod Unit</SelectItem>
+                </SelectContent>
+              </Select>
+
               <div className="hidden md:flex flex-col items-end">
                 <span className="font-bold text-sm">Amal Raj T P</span>
-                <span className="text-xs text-primary font-medium">Main Admin</span>
+                <span className="text-xs text-primary font-medium">{mockRole}</span>
               </div>
               <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold">
                 AR
@@ -362,12 +394,12 @@ export default function AdminPage() {
           </div>
 
           <div className="grid gap-6">
-            {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} />}
-            {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} />}
-            {activeTab === 'units' && <ManufacturedUnitsSection />}
-            {activeTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} />}
-            {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} />}
-            {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} />}
+            {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} mockRole={mockRole} />}
+            {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} mockRole={mockRole} />}
+            {activeTab === 'units' && <ManufacturedUnitsSection mockRole={mockRole} />}
+            {activeTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} mockRole={mockRole} />}
+            {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} mockRole={mockRole} />}
+            {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} mockRole={mockRole} />}
           </div>
         </div>
       </main>
@@ -390,14 +422,37 @@ function SidebarButton({ active, onClick, icon, label }: { active: boolean, onCl
   );
 }
 
-function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>> }) {
+function ProfileSection({ admins, setAdmins, mockRole }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>, mockRole: Role }) {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<'Main Admin' | 'Sub Admin'>('Sub Admin');
+  const [newRole, setNewRole] = useState<Role>('Product Manager');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
+  const [resetPasswordVal, setResetPasswordVal] = useState('');
+  
   const { toast } = useToast();
 
+  const handleGeneratePassword = () => {
+    const p = generateSecurePassword(12);
+    setNewPassword(p);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Copied!", description: "Password copied to clipboard." });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to copy.", variant: "destructive" });
+    }
+  };
+
   const handleAddAdmin = () => {
-    if (!newName || !newEmail) return;
+    if (!newName || !newEmail || !newPassword) {
+      toast({ title: "Error", description: "Please fill all required fields.", variant: "destructive" });
+      return;
+    }
     const newAdmin: AdminUser = {
       id: Math.random().toString(36).substr(2, 9),
       name: newName,
@@ -407,7 +462,27 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
     setAdmins([...admins, newAdmin]);
     setNewName('');
     setNewEmail('');
+    setNewPassword('');
     toast({ title: "Admin Added", description: `${newName} is now a ${newRole}.` });
+  };
+
+  const handleGenerateResetPassword = () => {
+    setResetPasswordVal(generateSecurePassword(12));
+  };
+
+  const handleConfirmReset = () => {
+    toast({ title: "Password Reset", description: `Password for ${resetAdmin?.name} has been reset.` });
+    setResetAdmin(null);
+    setResetPasswordVal('');
+  };
+
+  const getRoleBadge = (r: Role) => {
+    switch(r) {
+      case 'Manager': return <Badge className="bg-primary">Manager</Badge>;
+      case 'Product Manager': return <Badge className="bg-blue-500">Product Manager</Badge>;
+      case 'Production Unit': return <Badge className="bg-orange-500">Production Unit</Badge>;
+      default: return <Badge>{r}</Badge>;
+    }
   };
 
   return (
@@ -424,14 +499,15 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
               </div>
               <h3 className="font-bold text-xl">Amal Raj T P</h3>
               <p className="text-muted-foreground text-sm">amal@revopz.com</p>
-              <Badge className="mt-2 bg-primary">Main Admin</Badge>
+              <div className="mt-2">{getRoleBadge(mockRole)}</div>
             </div>
             <div className="pt-4 border-t border-primary/10 space-y-2">
               <p className="text-xs font-bold uppercase text-muted-foreground">Permissions</p>
               <ul className="text-sm space-y-1">
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Full Access</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> User Management</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> System Config</li>
+                {hasPermission(mockRole, 'manage_admins') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Manage Admins</li>}
+                {hasPermission(mockRole, 'manage_products') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Product Catalog</li>}
+                {hasPermission(mockRole, 'manage_units') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Production Units</li>}
+                {hasPermission(mockRole, 'view_warranty') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> View Warranties</li>}
               </ul>
             </div>
           </CardContent>
@@ -443,42 +519,73 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
               <CardTitle className="text-lg">System Administrators</CardTitle>
               <CardDescription>Manage team access and roles.</CardDescription>
             </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add Admin</Button>
-              </DialogTrigger>
-              <DialogContent className="bg-card">
-                <DialogHeader>
-                  <DialogTitle>Add New Administrator</DialogTitle>
-                  <DialogDescription>Assign system access to a new team member.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Enter name" />
+            <Can role={mockRole} perform="manage_admins">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add Admin</Button>
+                </DialogTrigger>
+                <DialogContent className="bg-card sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add New Administrator</DialogTitle>
+                    <DialogDescription>Assign system access and create credentials.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Enter name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@revopz.com" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Role</Label>
+                      <Select value={newRole} onValueChange={(v: Role) => setNewRole(v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Role" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover">
+                          <SelectItem value="Manager">Manager</SelectItem>
+                          <SelectItem value="Product Manager">Product Manager</SelectItem>
+                          <SelectItem value="Production Unit">Production Unit</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Temporary Password</Label>
+                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
+                          <RefreshCcw size={12} className="mr-1" /> Auto-generate
+                        </Button>
+                      </div>
+                      <div className="relative">
+                        <Input 
+                          id="password" 
+                          type={showPassword ? "text" : "password"} 
+                          value={newPassword} 
+                          onChange={(e) => setNewPassword(e.target.value)} 
+                          placeholder="••••••••" 
+                          className="pr-20"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(newPassword)}>
+                            <Copy size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Must be at least 8 characters with upper, lower, number, and special chars.</p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@revopz.com" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select value={newRole} onValueChange={(v: any) => setNewRole(v)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Role" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover">
-                        <SelectItem value="Main Admin">Main Admin</SelectItem>
-                        <SelectItem value="Sub Admin">Sub Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleAddAdmin}>Save Administrator</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button onClick={handleAddAdmin} className="w-full">Create Administrator</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </Can>
           </CardHeader>
           <CardContent>
             <Table>
@@ -487,6 +594,7 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <Can role={mockRole} perform="reset_passwords"><TableHead className="text-right">Actions</TableHead></Can>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -495,10 +603,38 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
                     <TableCell className="font-medium">{admin.name}</TableCell>
                     <TableCell className="text-muted-foreground">{admin.email}</TableCell>
                     <TableCell>
-                      <Badge variant={admin.role === 'Main Admin' ? 'default' : 'secondary'}>
-                        {admin.role}
-                      </Badge>
+                      {getRoleBadge(admin.role)}
                     </TableCell>
+                    <Can role={mockRole} perform="reset_passwords">
+                      <TableCell className="text-right">
+                        <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
+                              <Key size={14} className="mr-1" /> Reset Pass
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="bg-card sm:max-w-sm">
+                            <DialogHeader>
+                              <DialogTitle>Reset Password</DialogTitle>
+                              <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                              <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
+                                <span className="text-sm text-muted-foreground">New Password</span>
+                                <span className="font-mono text-lg font-bold tracking-wider">{resetPasswordVal}</span>
+                                <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
+                                  <Copy size={14} className="mr-2" /> Copy to Clipboard
+                                </Button>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
+                              <Button onClick={handleConfirmReset}>Confirm Reset</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </Can>
                   </TableRow>
                 ))}
               </TableBody>
@@ -555,7 +691,7 @@ function adminProductToProduct(ap: AdminProduct, existingProduct?: Product): Pro
 
 // ── ProductSection ───────────────────────────────────────────────────────────
 
-function ProductSection({ products, setProducts }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>> }) {
+function ProductSection({ products, setProducts, mockRole }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>>, mockRole: Role }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -602,9 +738,11 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
           <CardTitle className="text-lg">Product Catalog</CardTitle>
           <CardDescription>Create and manage your full product listings.</CardDescription>
         </div>
-        <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
-          <Plus size={16} className="mr-2" /> Add Product
-        </Button>
+        <Can role={mockRole} perform="manage_products">
+          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+            <Plus size={16} className="mr-2" /> Add Product
+          </Button>
+        </Can>
       </CardHeader>
 
       {/* ── Add / Edit Dialog ── */}
@@ -641,7 +779,9 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
               <TableHead>Product</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Power Rating</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <Can role={mockRole} perform="manage_products">
+                <TableHead className="text-right">Actions</TableHead>
+              </Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -659,30 +799,32 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
                 <TableCell className="text-muted-foreground">{product.powerRating}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
-                      <Edit size={16} />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Product?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(product.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
+                <Can role={mockRole} perform="manage_products">
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
+                        <Edit size={16} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(product.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </Can>
               </TableRow>
             ))}
           </TableBody>
@@ -692,7 +834,7 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
   );
 }
 
-function WarrantyManagementSection({ warranties, setWarranties, products }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[] }) {
+function WarrantyManagementSection({ warranties, setWarranties, products, mockRole }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[], mockRole: Role }) {
   const { toast } = useToast();
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -702,18 +844,6 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
       w.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [warranties, searchTerm]);
-
-  const handleUpdateStatus = (id: string, newStatus: WarrantyStatus) => {
-    const updated = warranties.map(w => w.id === id ? { ...w, status: newStatus } : w);
-    setWarranties(updated);
-    toast({ title: "Status Updated", description: `Warranty status changed to ${newStatus}.` });
-  };
-
-  const handleDelete = (id: string) => {
-    const updated = warranties.filter(w => w.id !== id);
-    setWarranties(updated);
-    toast({ title: "Warranty Deleted", description: "Record removed from registry." });
-  };
 
   const getStatusBadge = (status: WarrantyStatus) => {
     switch (status) {
@@ -731,7 +861,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-lg">Warranty Registry</CardTitle>
-          <CardDescription>Manage product serials and customer claims.</CardDescription>
+          <CardDescription>View product serials and customer claims. (Read-Only)</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -809,40 +939,18 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
                                   <p className="text-sm italic">"{selectedWarranty.claimMessage}"</p>
                                 </div>
                               )}
-
-                              <div className="space-y-2">
-                                <Label>Update Status</Label>
-                                <Select defaultValue={selectedWarranty.status} onValueChange={(v: WarrantyStatus) => handleUpdateStatus(selectedWarranty.id, v)}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent className="bg-popover">
-                                    <SelectItem value="Active">Active</SelectItem>
-                                    <SelectItem value="Claim Requested">Claim Requested</SelectItem>
-                                    <SelectItem value="Claim Approved">Claim Approved</SelectItem>
-                                    <SelectItem value="Claim Rejected">Claim Rejected</SelectItem>
-                                    <SelectItem value="Expired">Expired</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              
+                              <div className="p-4 rounded-lg bg-muted border flex items-center gap-3">
+                                <ShieldCheck size={24} className="text-primary" />
+                                <div>
+                                  <p className="font-bold text-sm">Current Status</p>
+                                  <div className="mt-1">{getStatusBadge(selectedWarranty.status)}</div>
+                                </div>
                               </div>
                             </div>
                           )}
                         </DialogContent>
                       </Dialog>
-
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-card">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Warranty?</AlertDialogTitle>
-                            <AlertDialogDescription>Remove serial {w.serialNumber} from the registry.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(w.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -861,7 +969,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
   );
 }
 
-function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (jobs: Job[]) => void }) {
+function CareerManagementSection({ jobs, setJobs, mockRole }: { jobs: Job[], setJobs: (jobs: Job[]) => void, mockRole: Role }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
@@ -925,9 +1033,11 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
           <CardTitle className="text-lg">Job Listings</CardTitle>
           <CardDescription>Manage open positions for REVOPZ.</CardDescription>
         </div>
-        <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
-          <Plus size={16} className="mr-2" /> Add Job
-        </Button>
+        <Can role={mockRole} perform="manage_careers">
+          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+            <Plus size={16} className="mr-2" /> Add Job
+          </Button>
+        </Can>
       </CardHeader>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -975,7 +1085,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
               <TableHead>Title</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <Can role={mockRole} perform="manage_careers"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -986,30 +1096,32 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
                 <TableCell>
                   <Badge variant="secondary">{job.type}</Badge>
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
-                      <Edit size={16} />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Job?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete the "{job.title}" position?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
+                <Can role={mockRole} perform="manage_careers">
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
+                        <Edit size={16} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Job?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete the "{job.title}" position?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </Can>
               </TableRow>
             ))}
           </TableBody>
@@ -1019,7 +1131,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
   );
 }
 
-function ApplicationsSection({ applications, setApplications }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void }) {
+function ApplicationsSection({ applications, setApplications, mockRole }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void, mockRole: Role }) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -1149,45 +1261,49 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
                                   "{selectedApp.message}"
                                 </div>
                               </div>
-                              <div className="space-y-2">
-                                <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
-                                <Select
-                                  defaultValue={selectedApp.status}
-                                  onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Update Status" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-popover">
-                                    <SelectItem value="New">New</SelectItem>
-                                    <SelectItem value="Under Review">Under Review</SelectItem>
-                                    <SelectItem value="Shortlisted">Shortlisted</SelectItem>
-                                    <SelectItem value="Rejected">Rejected</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                              <Can role={mockRole} perform="manage_careers">
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
+                                  <Select
+                                    defaultValue={selectedApp.status}
+                                    onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Update Status" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-popover">
+                                      <SelectItem value="New">New</SelectItem>
+                                      <SelectItem value="Under Review">Under Review</SelectItem>
+                                      <SelectItem value="Shortlisted">Shortlisted</SelectItem>
+                                      <SelectItem value="Rejected">Rejected</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </Can>
                             </div>
                           )}
                         </DialogContent>
                       </Dialog>
 
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-card">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Application?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to remove the application from {app.applicantName}? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(app.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Can role={mockRole} perform="manage_careers">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-card">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Application?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove the application from {app.applicantName}? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(app.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </Can>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1235,7 +1351,7 @@ const MOCK_CATALOG: MockCatalogProduct[] = [
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 
-function ManufacturedUnitsSection() {
+function ManufacturedUnitsSection({ mockRole }: { mockRole: Role }) {
   const { toast } = useToast();
   const [units, setUnits] = useState<ManufacturedUnit[]>([
     {
@@ -1348,9 +1464,11 @@ function ManufacturedUnitsSection() {
               className="pl-9 w-56"
             />
           </div>
-          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0">
-            <Plus size={16} className="mr-2" /> Add Unit
-          </Button>
+          <Can role={mockRole} perform="manage_units">
+            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0">
+              <Plus size={16} className="mr-2" /> Add Unit
+            </Button>
+          </Can>
         </div>
       </CardHeader>
 
@@ -1466,7 +1584,7 @@ function ManufacturedUnitsSection() {
               <TableHead>Mfg. Date</TableHead>
               <TableHead>Warranty (Mo.)</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <Can role={mockRole} perform="manage_units"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1482,32 +1600,34 @@ function ManufacturedUnitsSection() {
                     ? <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>
                     : <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>}
                 </TableCell>
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hover:text-destructive">
-                        <Trash2 size={16} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-card">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Unit?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Remove <span className="font-mono font-bold">{unit.productNumber}</span> from the manufactured units list. This cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDelete(unit.id)}
-                          className="bg-destructive hover:bg-destructive/90"
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </TableCell>
+                <Can role={mockRole} perform="manage_units">
+                  <TableCell className="text-right">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="hover:text-destructive">
+                          <Trash2 size={16} />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-card">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Unit?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Remove <span className="font-mono font-bold">{unit.productNumber}</span> from the manufactured units list. This cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(unit.id)}
+                            className="bg-destructive hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </Can>
               </TableRow>
             )) : (
               <TableRow>
