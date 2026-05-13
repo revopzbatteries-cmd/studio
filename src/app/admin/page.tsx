@@ -7,13 +7,16 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   LayoutDashboard,
   Package,
   ShieldCheck,
   UserCircle,
+  Users,
   Plus,
   Edit,
+  Pencil,
   Trash2,
   LogOut,
   CheckCircle2,
@@ -27,7 +30,11 @@ import {
   Factory,
   Lock,
   CalendarDays,
-  Loader2
+  Loader2,
+  Key,
+  EyeOff,
+  Copy,
+  RefreshCcw
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -40,34 +47,67 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
+import { EditProfileModal } from './components/EditProfileModal';
 import type { AdminProduct } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { Role, Can, hasPermission, toDisplayRole, getEffectivePermissions } from '@/lib/rbac';
+import { AdminProfile, getInitials } from '@/lib/adminService';
+import {
+  appUserEmailExists,
+  createAppUser,
+  type AppUser,
+  type AppUserStatus,
+} from '@/lib/appUsers';
+import { useAppUsers } from '@/hooks/useAppUsers';
+import {
+  addManufacturedUnit,
+  manufacturedUnitNumberExists,
+  type ManufacturedUnit,
+  type ManufacturedUnitCategory,
+} from '@/lib/manufacturedUnits';
+import { useManufacturedUnits } from '@/hooks/useManufacturedUnits';
+import { generateSecurePassword } from '@/lib/utils';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  loginSchema,
+  addAdminSchema,
+  addAppUserSchema,
+  addManufacturedUnitSchema,
+  normalizeProductNumber,
+  type LoginFormData,
+  type AddAdminFormData,
+  type AddAppUserFormData,
+  type AddManufacturedUnitFormData,
+  checkPasswordStrength,
+} from '@/lib/validations';
 
 // Types
 type AdminUser = {
   id: string;
   name: string;
   email: string;
-  role: 'Main Admin' | 'Sub Admin';
+  role: Role;
 };
 
 export default function AdminPage() {
   const { toast } = useToast();
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, adminProfile, loading: authLoading, accessDenied, logout } = useAuth();
+
   const [activeTab, setActiveTab] = useState('profile');
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   // Login State
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState('');
+  const { register: registerLogin, handleSubmit: handleLoginSubmit, formState: { errors: loginErrors } } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' }
+  });
 
   // Data State
-  const [admins, setAdmins] = useState<AdminUser[]>([
-    { id: '1', name: 'Amal Raj T P', email: 'amal@revopz.com', role: 'Main Admin' }
-  ]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -75,139 +115,45 @@ export default function AdminPage() {
 
   // Initialize and Sync Data
   useEffect(() => {
-    // Sync Jobs
     const savedJobs = localStorage.getItem('revopz_jobs');
-    if (savedJobs) {
-      setJobs(JSON.parse(savedJobs));
-    } else {
-      setJobs(INITIAL_JOBS);
-      localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS));
-    }
+    if (savedJobs) { setJobs(JSON.parse(savedJobs)); } else { setJobs(INITIAL_JOBS); localStorage.setItem('revopz_jobs', JSON.stringify(INITIAL_JOBS)); }
 
-    // Sync Applications
     const savedApps = localStorage.getItem('revopz_applications');
-    if (savedApps) {
-      setApplications(JSON.parse(savedApps));
-    } else {
-      setApplications(INITIAL_APPLICATIONS);
-      localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS));
-    }
+    if (savedApps) { setApplications(JSON.parse(savedApps)); } else { setApplications(INITIAL_APPLICATIONS); localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS)); }
 
-    // Sync Warranties
     const savedWarranties = localStorage.getItem('revopz_warranties');
-    if (savedWarranties) {
-      setWarranties(JSON.parse(savedWarranties));
-    } else {
-      setWarranties(INITIAL_WARRANTIES);
-      localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES));
-    }
+    if (savedWarranties) { setWarranties(JSON.parse(savedWarranties)); } else { setWarranties(INITIAL_WARRANTIES); localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES)); }
   }, []);
 
-  const handleUpdateJobs = (newJobs: Job[]) => {
-    setJobs(newJobs);
-    localStorage.setItem('revopz_jobs', JSON.stringify(newJobs));
-  };
-
-  const handleUpdateApps = (newApps: JobApplication[]) => {
-    setApplications(newApps);
-    localStorage.setItem('revopz_applications', JSON.stringify(newApps));
-  };
-
-  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => {
-    setWarranties(newWarranties);
-    localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties));
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-
-    // 1. Sanitize Inputs
-    const sanitizedEmail = email.trim();
-    const sanitizedPassword = password.trim();
-
-    // 2. Client-side Validation
-    if (!sanitizedEmail) {
-      setLoginError('Email is required.');
-      return;
+  // Seed local admin list from Firestore profile once loaded
+  useEffect(() => {
+    if (adminProfile) {
+      setAdmins([{ id: adminProfile.uid, name: adminProfile.name, email: adminProfile.email, role: toDisplayRole(adminProfile.role) }]);
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(sanitizedEmail)) {
-      setLoginError('Please enter a valid email address.');
-      return;
-    }
-    if (!sanitizedPassword) {
-      setLoginError('Password is required.');
-      return;
-    }
-    if (sanitizedPassword.length < 6) {
-      setLoginError('Password must be at least 6 characters.');
-      return;
-    }
+  }, [adminProfile]);
 
-    // 3. Attempt Firebase login — let error codes tell us exactly what went wrong.
+  const handleUpdateJobs = (newJobs: Job[]) => { setJobs(newJobs); localStorage.setItem('revopz_jobs', JSON.stringify(newJobs)); };
+  const handleUpdateApps = (newApps: JobApplication[]) => { setApplications(newApps); localStorage.setItem('revopz_applications', JSON.stringify(newApps)); };
+  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => { setWarranties(newWarranties); localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties)); };
+
+  const onLoginSubmit = async (data: LoginFormData) => {
     try {
       setIsLoggingIn(true);
-      console.log(`[Auth Debug] Attempting sign in for: ${sanitizedEmail}`);
-
-      const userCredential = await signInWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
-      console.log(`[Auth Debug] Login successful for: ${userCredential.user.email}`);
-      // onAuthStateChanged in AuthContext will pick up the new user automatically.
-      // The page will re-render from !user → authenticated dashboard instantly.
-      toast({ title: "Login Successful", description: "Welcome to the REVOPZ Admin Panel." });
-
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      console.log(`[Auth] Login successful for: ${userCredential.user.email}`);
+      // AuthContext will fetch adminProfile from Firestore automatically via onAuthStateChanged
     } catch (error: any) {
-      console.warn("[Auth] Sign-in failed. Code:", error.code);
-
-      if (error.code === 'auth/user-not-found') {
-        // Legacy SDK: email not registered
-        toast({
-          title: "Access Denied",
-          description: "You don't have any access.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/wrong-password') {
-        // Legacy SDK: email exists but password wrong
-        toast({
-          title: "Incorrect Password",
-          description: "Incorrect password. Please contact the super admin.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/invalid-credential') {
-        // Modern Firebase SDK (v9+): covers both wrong email AND wrong password.
-        // We cannot distinguish them without email enumeration (which is a security risk).
-        // Show a combined message — the most common case here is wrong password
-        // since this is an admin-only system with a known fixed email.
-        toast({
-          title: "Login Failed",
-          description: "Invalid credentials. Please check your email and password, or contact the super admin.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/invalid-email') {
-        toast({
-          title: "Invalid Email",
-          description: "The email address format is not valid.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/too-many-requests') {
-        toast({
-          title: "Account Temporarily Locked",
-          description: "Too many failed attempts. Please try again later or reset your password.",
-          variant: "destructive",
-        });
-      } else if (error.code === 'auth/network-request-failed') {
-        toast({
-          title: "Network Error",
-          description: "Something went wrong. Please check your internet connection and try again.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Something went wrong. Please try again later.",
-          variant: "destructive",
-        });
-      }
+      console.warn('[Auth] Sign-in failed. Code:', error.code);
+      const messages: Record<string, { title: string; description: string }> = {
+        'auth/user-not-found': { title: 'Access Denied', description: "You don't have admin access." },
+        'auth/wrong-password': { title: 'Incorrect Password', description: 'Incorrect password. Please contact the super admin.' },
+        'auth/invalid-credential': { title: 'Login Failed', description: 'Invalid credentials. Please check your email and password.' },
+        'auth/invalid-email': { title: 'Invalid Email', description: 'The email address format is not valid.' },
+        'auth/too-many-requests': { title: 'Account Temporarily Locked', description: 'Too many failed attempts. Please try again later.' },
+        'auth/network-request-failed': { title: 'Network Error', description: 'Check your internet connection and try again.' },
+      };
+      const msg = messages[error.code] ?? { title: 'Error', description: 'Something went wrong. Please try again later.' };
+      toast({ ...msg, variant: 'destructive' });
     } finally {
       setIsLoggingIn(false);
     }
@@ -215,18 +161,51 @@ export default function AdminPage() {
 
   const handleLogout = async () => {
     await logout();
-    toast({ title: "Logged Out", description: "You have been logged out of the admin panel." });
+    toast({ title: 'Logged Out', description: 'You have been logged out of the admin panel.' });
   };
 
+  // ── Auth loading screen ──────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 animate-pulse">
+          <LayoutDashboard className="text-primary" />
+        </div>
+        <div className="space-y-2 text-center">
+          <div className="h-3 w-32 bg-muted rounded-full animate-pulse mx-auto" />
+          <div className="h-2 w-24 bg-muted/50 rounded-full animate-pulse mx-auto" />
+        </div>
+        <Loader2 className="h-6 w-6 text-primary animate-spin mt-2" />
       </div>
     );
   }
 
-  if (!user) {
+  // ── Access denied screen (valid Firebase user but no Firestore admin doc) ─
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md border-destructive/30 bg-card/50 backdrop-blur-sm">
+          <CardHeader className="space-y-1 text-center">
+            <div className="mx-auto h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4 border border-destructive/20">
+              <ShieldCheck className="text-destructive" size={28} />
+            </div>
+            <CardTitle className="text-xl font-headline text-destructive">Access Denied</CardTitle>
+            <CardDescription>
+              Your account is not registered as an admin or has been deactivated. Contact your system administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Button variant="outline" className="w-full border-destructive/30 hover:bg-destructive/10" onClick={handleLogout}>
+              <LogOut size={16} className="mr-2" /> Sign Out
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Login screen ─────────────────────────────────────────────────────────
+  if (!user || !adminProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md border-primary/20 bg-card/50 backdrop-blur-sm">
@@ -237,7 +216,7 @@ export default function AdminPage() {
             <CardTitle className="text-2xl font-headline">Admin Login</CardTitle>
             <CardDescription>Enter your credentials to access the REVOPZ control center.</CardDescription>
           </CardHeader>
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleLoginSubmit(onLoginSubmit)}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
@@ -245,11 +224,10 @@ export default function AdminPage() {
                   id="email"
                   type="email"
                   placeholder="admin@revopz.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="bg-background"
+                  {...registerLogin('email')}
+                  className={`bg-background ${loginErrors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
+                {loginErrors.email && <p className="text-sm text-destructive font-medium">{loginErrors.email.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -257,16 +235,15 @@ export default function AdminPage() {
                   id="password"
                   type="password"
                   placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-background"
+                  {...registerLogin('password')}
+                  className={`bg-background ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
+                {loginErrors.password && <p className="text-sm text-destructive font-medium">{loginErrors.password.message}</p>}
               </div>
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90 transition-all" disabled={isLoggingIn}>
-                {isLoggingIn ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : "Sign In"}
+                {isLoggingIn ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : 'Sign In'}
               </Button>
             </CardFooter>
           </form>
@@ -275,6 +252,16 @@ export default function AdminPage() {
     );
   }
 
+  // ── Live data from Firestore ───────────────────────────────────────────────
+  const permissions = getEffectivePermissions(adminProfile);
+  const displayRole = toDisplayRole(adminProfile.role);
+  const initials = getInitials(adminProfile.name);
+
+  // Auto-redirect Production Unit to the only permitted tab
+  const isProductionUnit = displayRole === 'Production Unit';
+  const resolvedTab = isProductionUnit ? 'units' : (activeTab === 'profile' && !hasPermission(permissions, 'manage_admins') ? 'units' : activeTab);
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       <aside className="w-full md:w-64 border-r bg-card flex flex-col">
@@ -286,48 +273,38 @@ export default function AdminPage() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          <SidebarButton
-            active={activeTab === 'profile'}
-            onClick={() => setActiveTab('profile')}
-            icon={<UserCircle size={20} />}
-            label="Admin Profile"
-          />
-          <SidebarButton
-            active={activeTab === 'products'}
-            onClick={() => setActiveTab('products')}
-            icon={<Package size={20} />}
-            label="Product Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'units'}
-            onClick={() => setActiveTab('units')}
-            icon={<Factory size={20} />}
-            label="Manufactured Units"
-          />
-          <SidebarButton
-            active={activeTab === 'warranty'}
-            onClick={() => setActiveTab('warranty')}
-            icon={<ShieldCheck size={20} />}
-            label="Warranty Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'careers'}
-            onClick={() => setActiveTab('careers')}
-            icon={<Briefcase size={20} />}
-            label="Career Mgmt"
-          />
-          <SidebarButton
-            active={activeTab === 'applications'}
-            onClick={() => setActiveTab('applications')}
-            icon={<FileText size={20} />}
-            label="Applications"
-          />
+          <Can permissions={permissions} perform="manage_admins">
+            <SidebarButton active={resolvedTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserCircle size={20} />} label="Admin Profile" />
+          </Can>
+          <Can permissions={permissions} perform="manage_products">
+            <SidebarButton active={resolvedTab === 'products'} onClick={() => setActiveTab('products')} icon={<Package size={20} />} label="Product Mgmt" />
+          </Can>
+          <Can permissions={permissions} perform="manage_users">
+            <SidebarButton active={resolvedTab === 'users'} onClick={() => setActiveTab('users')} icon={<Users size={20} />} label="User Mgmt" />
+          </Can>
+          <Can permissions={permissions} perform="manage_units">
+            <SidebarButton active={resolvedTab === 'units'} onClick={() => setActiveTab('units')} icon={<Factory size={20} />} label="Manufactured Units" />
+          </Can>
+          <Can permissions={permissions} perform="view_warranty">
+            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => setActiveTab('warranty')} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
+          </Can>
+          <Can permissions={permissions} perform="manage_careers">
+            <SidebarButton active={resolvedTab === 'careers'} onClick={() => setActiveTab('careers')} icon={<Briefcase size={20} />} label="Career Mgmt" />
+            <SidebarButton active={resolvedTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<FileText size={20} />} label="Applications" />
+          </Can>
         </nav>
 
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-1">
+          {/* Edit Profile — accessible to every role */}
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-muted-foreground hover:text-primary hover:bg-primary/10"
+            onClick={() => setIsEditProfileOpen(true)}
+          >
+            <Pencil size={18} className="mr-3" /> Edit Profile
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
-            <LogOut size={20} className="mr-3" />
-            Logout
+            <LogOut size={20} className="mr-3" /> Logout
           </Button>
         </div>
       </aside>
@@ -337,43 +314,66 @@ export default function AdminPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold font-headline capitalize">
-                {activeTab === 'profile' ? 'Profile Management' :
-                  activeTab === 'products' ? 'Product Catalog' :
-                    activeTab === 'units' ? 'Manufactured Units' :
-                      activeTab === 'warranty' ? 'Warranty Registry' :
-                        activeTab === 'careers' ? 'Career Management' : 'Job Applications'}
+                {resolvedTab === 'profile' ? 'Profile Management' :
+                  resolvedTab === 'products' ? 'Product Catalog' :
+                    resolvedTab === 'users' ? 'User Management' :
+                    resolvedTab === 'units' ? 'Manufactured Units' :
+                      resolvedTab === 'warranty' ? 'Warranty Registry' :
+                        resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">
-                {activeTab === 'units'
-                  ? 'Manage manufactured products and track warranty-ready units.'
-                  : 'Manage your REVOPZ system operations and data.'}
+                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
+                  resolvedTab === 'users' ? 'Create and manage mobile application users.' :
+                    'Manage your REVOPZ system operations and data.'}
               </p>
             </div>
 
+            {/* Live admin profile badge (top-right) */}
             <div className="flex items-center gap-3">
               <div className="hidden md:flex flex-col items-end">
-                <span className="font-bold text-sm">Amal Raj T P</span>
-                <span className="text-xs text-primary font-medium">Main Admin</span>
+                <span className="font-bold text-sm">{adminProfile.name}</span>
+                <span className="text-xs text-primary font-medium">{displayRole}</span>
               </div>
-              <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold">
-                AR
-              </div>
+              <button
+                onClick={() =>
+                  isProductionUnit ? setIsEditProfileOpen(true) : setActiveTab('profile')
+                }
+                title="Edit Profile"
+                className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold select-none hover:bg-primary/30 transition-colors cursor-pointer"
+              >
+                {initials}
+              </button>
             </div>
           </div>
 
           <div className="grid gap-6">
-            {activeTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} />}
-            {activeTab === 'products' && <ProductSection products={products} setProducts={setProducts} />}
-            {activeTab === 'units' && <ManufacturedUnitsSection />}
-            {activeTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} />}
-            {activeTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} />}
-            {activeTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} />}
+            {/* Edit Profile Modal — accessible at the dashboard level for all roles */}
+            <EditProfileModal
+              open={isEditProfileOpen}
+              onOpenChange={setIsEditProfileOpen}
+              adminProfile={adminProfile}
+              permissions={permissions}
+              onProfileUpdated={(_updates) => {
+                // Profile refreshes automatically via AuthContext onAuthStateChanged
+              }}
+            />
+
+            {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
+            {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
+            {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
+            {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
+            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} permissions={permissions} />}
+            {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
+            {resolvedTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} permissions={permissions} />}
           </div>
         </div>
       </main>
     </div>
   );
 }
+
+
+
 
 function SidebarButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
@@ -390,48 +390,201 @@ function SidebarButton({ active, onClick, icon, label }: { active: boolean, onCl
   );
 }
 
-function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>> }) {
-  const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<'Main Admin' | 'Sub Admin'>('Sub Admin');
+function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admins: AdminUser[], setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>, permissions: string[], adminProfile: AdminProfile }) {
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
+  const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
+  const [resetPasswordVal, setResetPasswordVal] = useState('');
 
-  const handleAddAdmin = () => {
-    if (!newName || !newEmail) return;
-    const newAdmin: AdminUser = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newName,
-      email: newEmail,
-      role: newRole
-    };
-    setAdmins([...admins, newAdmin]);
-    setNewName('');
-    setNewEmail('');
-    toast({ title: "Admin Added", description: `${newName} is now a ${newRole}.` });
+  // ── Load all admins from API on mount ─────────────────────────────────────
+  const loadAdmins = async () => {
+    setIsLoadingAdmins(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+
+      const response = await fetch('/api/admin/admins', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error('[ProfileSection] Failed to load admins:', payload?.error);
+        return;
+      }
+
+      const { admins: serverAdmins } = await response.json();
+      const mapped: AdminUser[] = serverAdmins.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        role: toDisplayRole(a.role),
+      }));
+      setAdmins(mapped);
+    } catch (err) {
+      console.error('[ProfileSection] Error fetching admins:', err);
+    } finally {
+      setIsLoadingAdmins(false);
+    }
   };
+
+  useEffect(() => {
+    loadAdmins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── React Hook Form setup ──────────────────────────────────────────────────
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors, isValid }
+  } = useForm<AddAdminFormData>({
+    resolver: zodResolver(addAdminSchema),
+    mode: 'onChange',
+    defaultValues: { name: '', email: '', role: 'Product Manager', password: '' }
+  });
+
+  const watchedPassword = watch('password', '');
+  const passwordConditions = checkPasswordStrength(watchedPassword);
+  const passwordMet = passwordConditions.filter(c => c.met).length;
+  const passwordStrength = passwordMet === 5 ? 'strong' : passwordMet >= 3 ? 'medium' : 'weak';
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleGeneratePassword = () => {
+    const p = generateSecurePassword(12);
+    setValue('password', p, { shouldValidate: true });
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Copied!", description: "Password copied to clipboard." });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy.", variant: "destructive" });
+    }
+  };
+
+  const onAddAdminSubmit = async (data: AddAdminFormData) => {
+    setIsSubmitting(true);
+
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+
+      if (!idToken) {
+        throw new Error('You must be logged in to create an admin.');
+      }
+
+      const response = await fetch('/api/admin/admins', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || 'Admin could not be created. Please try again.');
+      }
+
+      toast({ title: 'Admin Added', description: `${data.name.trim()} is now a ${data.role}.` });
+      reset();
+      setShowPassword(false);
+      setIsAddDialogOpen(false);
+      // Refresh from Firestore to guarantee accurate list
+      await loadAdmins();
+    } catch (error: any) {
+      toast({
+        title: 'Creation Failed',
+        description: error.message || 'An unexpected error occurred.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGenerateResetPassword = () => {
+    setResetPasswordVal(generateSecurePassword(12));
+  };
+
+  const handleConfirmReset = () => {
+    toast({ title: "Password Reset", description: `Password for ${resetAdmin?.name} has been reset.` });
+    setResetAdmin(null);
+    setResetPasswordVal('');
+  };
+
+  const getRoleBadge = (r: Role) => {
+    switch (r) {
+      case 'Manager': return <Badge className="bg-primary">Manager</Badge>;
+      case 'Product Manager': return <Badge className="bg-blue-500">Product Manager</Badge>;
+      case 'Production Unit': return <Badge className="bg-orange-500">Production Unit</Badge>;
+      default: return <Badge>{r}</Badge>;
+    }
+  };
+
+  // Strength indicator styles
+  const strengthBarClass = passwordStrength === 'strong'
+    ? 'bg-green-500'
+    : passwordStrength === 'medium'
+      ? 'bg-yellow-500'
+      : 'bg-destructive';
 
   return (
     <div className="space-y-6">
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        open={isEditProfileOpen}
+        onOpenChange={setIsEditProfileOpen}
+        adminProfile={adminProfile}
+        permissions={permissions}
+        onProfileUpdated={(updates) => {
+          // Optimistically reflect name/email changes in the admins list
+          if (updates.name || updates.email) {
+            setAdmins(prev =>
+              prev.map(a =>
+                a.id === adminProfile.uid
+                  ? { ...a, ...(updates.name && { name: updates.name }), ...(updates.email && { email: updates.email }) }
+                  : a
+              )
+            );
+          }
+        }}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1 border-primary/20 bg-primary/5">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Your Profile</CardTitle>
+            <Button size="sm" variant="outline" className="border-primary/30 hover:bg-primary/10 hover:text-primary" onClick={() => setIsEditProfileOpen(true)}>
+              <Edit size={14} className="mr-1.5" /> Edit
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col items-center py-4">
               <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center text-2xl font-bold text-white mb-4 border-4 border-background">
-                AR
+                {getInitials(adminProfile.name)}
               </div>
-              <h3 className="font-bold text-xl">Amal Raj T P</h3>
-              <p className="text-muted-foreground text-sm">amal@revopz.com</p>
-              <Badge className="mt-2 bg-primary">Main Admin</Badge>
+              <h3 className="font-bold text-xl">{adminProfile.name}</h3>
+              <p className="text-muted-foreground text-sm">{adminProfile.email}</p>
+              <div className="mt-2">{getRoleBadge(toDisplayRole(adminProfile.role))}</div>
             </div>
             <div className="pt-4 border-t border-primary/10 space-y-2">
               <p className="text-xs font-bold uppercase text-muted-foreground">Permissions</p>
               <ul className="text-sm space-y-1">
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Full Access</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> User Management</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> System Config</li>
+                {hasPermission(permissions, 'manage_admins') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Manage Admins</li>}
+                {hasPermission(permissions, 'manage_products') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Product Catalog</li>}
+                {hasPermission(permissions, 'manage_units') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> Production Units</li>}
+                {hasPermission(permissions, 'view_warranty') && <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-primary" /> View Warranties</li>}
               </ul>
             </div>
           </CardContent>
@@ -443,42 +596,149 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
               <CardTitle className="text-lg">System Administrators</CardTitle>
               <CardDescription>Manage team access and roles.</CardDescription>
             </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add Admin</Button>
-              </DialogTrigger>
-              <DialogContent className="bg-card">
-                <DialogHeader>
-                  <DialogTitle>Add New Administrator</DialogTitle>
-                  <DialogDescription>Assign system access to a new team member.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Enter name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@revopz.com" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select value={newRole} onValueChange={(v: any) => setNewRole(v)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Role" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover">
-                        <SelectItem value="Main Admin">Main Admin</SelectItem>
-                        <SelectItem value="Sub Admin">Sub Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleAddAdmin}>Save Administrator</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Can permissions={permissions} perform="manage_admins">
+              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                if (!open) { reset(); setShowPassword(false); }
+                setIsAddDialogOpen(open);
+              }}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="bg-primary hover:bg-primary/90"><Plus size={16} className="mr-2" /> Add User</Button>
+                </DialogTrigger>
+                <DialogContent className="bg-card sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add New Administrator</DialogTitle>
+                    <DialogDescription>Assign system access and create credentials.</DialogDescription>
+                  </DialogHeader>
+
+                  <form onSubmit={handleSubmit(onAddAdminSubmit)} noValidate>
+                    <div className="grid gap-4 py-4">
+
+                      {/* Full Name */}
+                      <div className="space-y-1">
+                        <Label htmlFor="admin-name">Full Name</Label>
+                        <Input
+                          id="admin-name"
+                          placeholder="e.g. John Smith"
+                          {...register('name')}
+                          className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
+                        />
+                        {errors.name && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.name.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Email */}
+                      <div className="space-y-1">
+                        <Label htmlFor="admin-email">Email</Label>
+                        <Input
+                          id="admin-email"
+                          type="email"
+                          placeholder="email@revopz.com"
+                          {...register('email')}
+                          className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
+                        />
+                        {errors.email && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.email.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Role */}
+                      <div className="space-y-1">
+                        <Label>Role</Label>
+                        <Select
+                          defaultValue="Product Manager"
+                          onValueChange={(v: Role) => setValue('role', v, { shouldValidate: true })}
+                        >
+                          <SelectTrigger className={errors.role ? 'border-destructive' : ''}>
+                            <SelectValue placeholder="Select Role" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover">
+                            <SelectItem value="Manager">Manager</SelectItem>
+                            <SelectItem value="Product Manager">Product Manager</SelectItem>
+                            <SelectItem value="Production Unit">Production Unit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.role && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.role.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Password */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="admin-password">Temporary Password</Label>
+                          <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
+                            <RefreshCcw size={12} className="mr-1" /> Auto-generate
+                          </Button>
+                        </div>
+                        <div className="relative">
+                          <Input
+                            id="admin-password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            {...register('password')}
+                            className={`pr-20 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                              {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(watchedPassword)} disabled={!watchedPassword}>
+                              <Copy size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        {errors.password && (
+                          <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                            <X size={12} /> {errors.password.message}
+                          </p>
+                        )}
+
+                        {/* Password Strength Bar + Checklist */}
+                        {watchedPassword.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${strengthBarClass}`}
+                                  style={{ width: `${(passwordMet / 5) * 100}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
+                                  passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                                }`}>
+                                {passwordStrength}
+                              </span>
+                            </div>
+                            <ul className="space-y-1">
+                              {passwordConditions.map((c) => (
+                                <li key={c.label} className={`flex items-center gap-1.5 text-xs transition-colors duration-200 ${c.met ? 'text-green-500' : 'text-muted-foreground'}`}>
+                                  {c.met ? <CheckCircle2 size={11} /> : <X size={11} />}
+                                  {c.label}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                      <Button type="submit" disabled={!isValid || isSubmitting} className="min-w-[160px]">
+                        {isSubmitting ? <><Loader2 size={14} className="mr-2 animate-spin" /> Creating...</> : 'Create Administrator'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </Can>
           </CardHeader>
           <CardContent>
             <Table>
@@ -487,6 +747,7 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <Can permissions={permissions} perform="reset_passwords"><TableHead className="text-right">Actions</TableHead></Can>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -495,10 +756,46 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
                     <TableCell className="font-medium">{admin.name}</TableCell>
                     <TableCell className="text-muted-foreground">{admin.email}</TableCell>
                     <TableCell>
-                      <Badge variant={admin.role === 'Main Admin' ? 'default' : 'secondary'}>
-                        {admin.role}
-                      </Badge>
+                      {getRoleBadge(admin.role)}
                     </TableCell>
+                    <Can permissions={permissions} perform="reset_passwords">
+                      <TableCell className="text-right">
+                        <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
+                              <Key size={14} className="mr-1" /> Reset Pass
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="bg-card sm:max-w-sm">
+                            <DialogHeader>
+                              <DialogTitle>Reset Password</DialogTitle>
+                              <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                              <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
+                                <span className="text-sm text-muted-foreground">New Password</span>
+                                <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
+                                <div className="flex gap-2">
+                                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
+                                    <Copy size={14} className="mr-2" /> Copy
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
+                                    <RefreshCcw size={14} className="mr-1" /> Regenerate
+                                  </Button>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground text-center">
+                                This password meets all security requirements. Share it securely with the administrator.
+                              </p>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
+                              <Button onClick={handleConfirmReset}>Confirm Reset</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </Can>
                   </TableRow>
                 ))}
               </TableBody>
@@ -507,6 +804,432 @@ function ProfileSection({ admins, setAdmins }: { admins: AdminUser[], setAdmins:
         </Card>
       </div>
     </div>
+  );
+}
+
+function UserManagementSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
+  const { toast } = useToast();
+  const canManageUsers = hasPermission(permissions, 'manage_users') && adminProfile.role === 'manager';
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [passwordWasGenerated, setPasswordWasGenerated] = useState(false);
+  const { filteredUsers, isLoadingUsers, error: usersError } = useAppUsers(searchTerm);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    setError,
+    clearErrors,
+    watch,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm<AddAppUserFormData>({
+    resolver: zodResolver(addAppUserSchema),
+    mode: 'onChange',
+    defaultValues: {
+      name: '',
+      email: '',
+      phone: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
+
+  const watchedPassword = watch('password', '');
+  const watchedConfirmPassword = watch('confirmPassword', '');
+  const passwordConditions = checkPasswordStrength(watchedPassword);
+  const passwordMet = passwordConditions.filter(c => c.met).length;
+  const passwordStrength = passwordMet === 5 ? 'strong' : passwordMet >= 3 ? 'medium' : 'weak';
+
+  useEffect(() => {
+    if (!usersError) return;
+
+    console.error('[UserManagement] Firestore subscription failed:', usersError);
+    toast({
+      title: 'Unable to load users',
+      description: 'Mobile app users could not be loaded. Please try again.',
+      variant: 'destructive',
+    });
+  }, [toast, usersError]);
+
+  const resetAddUserDialog = () => {
+    reset();
+    setShowPassword(false);
+    setIsCheckingEmail(false);
+    setPasswordWasGenerated(false);
+  };
+
+  const handleGeneratePassword = () => {
+    const password = generateSecurePassword(12);
+
+    setValue('password', password, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue('confirmPassword', password, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setPasswordWasGenerated(true);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Copied!', description: 'Password copied to clipboard.' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to copy.', variant: 'destructive' });
+    }
+  };
+
+  const roleBadge = (role: AppUser['role']) => {
+    return <Badge className="bg-primary hover:bg-primary/90">{role === 'user' ? 'User' : role}</Badge>;
+  };
+
+  const statusBadge = (status: AppUserStatus) => {
+    return <Badge className="bg-green-600 hover:bg-green-700">{status === 'active' ? 'Active' : status}</Badge>;
+  };
+
+  const formatCreatedAt = (createdAt: AppUser['createdAt']) => {
+    if (!createdAt) return 'Pending';
+    return createdAt.toDate().toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const onAddUserSubmit = async (data: AddAppUserFormData) => {
+    if (!canManageUsers) {
+      toast({
+        title: 'Permission denied',
+        description: 'Only managers can create mobile app users.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizedEmail = data.email.trim().toLowerCase();
+
+    setIsCheckingEmail(true);
+    try {
+      const exists = await appUserEmailExists(normalizedEmail);
+
+      if (exists) {
+        setError('email', {
+          type: 'manual',
+          message: 'Email already exists.',
+        });
+        toast({
+          title: 'Email already exists.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Your admin session expired. Please sign in again.');
+      }
+
+      await createAppUser({ ...data, email: normalizedEmail }, idToken);
+
+      toast({
+        title: 'User Added',
+        description: `${data.name.trim()} can now sign in to the mobile app.`,
+      });
+      if (passwordWasGenerated) {
+        setGeneratedCredentials({
+          email: normalizedEmail,
+          password: data.password,
+        });
+      }
+      setIsAddDialogOpen(false);
+      resetAddUserDialog();
+    } catch (error: any) {
+      const message = error?.message ?? 'User could not be created. Please try again.';
+
+      if (message.toLowerCase().includes('email')) {
+        setError('email', { type: 'manual', message });
+      }
+
+      if (message.toLowerCase().includes('phone')) {
+        setError('phone', { type: 'manual', message });
+      }
+
+      toast({
+        title: message === 'Email already exists.' ? message : 'Add failed',
+        description: message === 'Email already exists.' ? undefined : message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
+
+  const strengthBarClass = passwordStrength === 'strong'
+    ? 'bg-green-500'
+    : passwordStrength === 'medium'
+      ? 'bg-yellow-500'
+      : 'bg-destructive';
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+        <div>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Users size={20} className="text-primary" /> User Management
+          </CardTitle>
+          <CardDescription>Create and manage mobile application users.</CardDescription>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-9 w-56"
+            />
+          </div>
+          {canManageUsers && (
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+              if (!open) resetAddUserDialog();
+              setIsAddDialogOpen(open);
+            }}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary hover:bg-primary/90 shrink-0">
+                  <Plus size={16} className="mr-2" /> Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-headline flex items-center gap-2">
+                    <Users size={20} className="text-primary" /> Add User
+                  </DialogTitle>
+                  <DialogDescription>Create credentials for a mobile application user.</DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit(onAddUserSubmit)} className="space-y-4 py-2" noValidate>
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-name">Full Name <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-name"
+                      placeholder="e.g. John Smith"
+                      {...register('name')}
+                      className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.name && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.name.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-email">Email <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-email"
+                      type="email"
+                      placeholder="user@example.com"
+                      {...register('email', {
+                        onChange: () => {
+                          if (errors.email?.type === 'manual') clearErrors('email');
+                        },
+                      })}
+                      className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.email && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.email.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-phone">Phone Number <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-phone"
+                      placeholder="+919876543210"
+                      {...register('phone')}
+                      className={errors.phone ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.phone && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.phone.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="app-user-password">Password <span className="text-destructive">*</span></Label>
+                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
+                        <RefreshCcw size={12} className="mr-1" /> Generate
+                      </Button>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="app-user-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Create a strong password"
+                        {...register('password', {
+                          onChange: () => setPasswordWasGenerated(false),
+                        })}
+                        className={`pr-20 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(watchedPassword)} disabled={!watchedPassword}>
+                          <Copy size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                    {errors.password && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.password.message}</p>}
+
+                    {watchedPassword.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${strengthBarClass}`}
+                              style={{ width: `${(passwordMet / 5) * 100}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
+                            passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                          }`}>
+                            {passwordStrength}
+                          </span>
+                        </div>
+                        <ul className="space-y-1">
+                          {passwordConditions.map(condition => (
+                            <li key={condition.label} className={`flex items-center gap-1.5 text-xs ${condition.met ? 'text-green-500' : 'text-muted-foreground'}`}>
+                              {condition.met ? <CheckCircle2 size={11} /> : <X size={11} />}
+                              {condition.label}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-confirm-password">Confirm Password <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-confirm-password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Re-enter password"
+                      {...register('confirmPassword')}
+                      className={errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.confirmPassword
+                      ? <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.confirmPassword.message}</p>
+                      : watchedConfirmPassword && watchedConfirmPassword === watchedPassword
+                        ? <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle2 size={11} />Passwords match</p>
+                        : null}
+                  </div>
+
+                  <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
+                    <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting || isCheckingEmail}>
+                      <X size={16} className="mr-2" /> Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={!isValid || isSubmitting || isCheckingEmail}
+                      className="bg-primary hover:bg-primary/90 min-w-[130px]"
+                    >
+                      {isCheckingEmail
+                        ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
+                        : isSubmitting
+                          ? <><Loader2 size={14} className="mr-2 animate-spin" /> Creating...</>
+                          : <><Users size={16} className="mr-2" /> Create User</>}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      </CardHeader>
+
+      <Dialog open={!!generatedCredentials} onOpenChange={(open) => { if (!open) setGeneratedCredentials(null); }}>
+        <DialogContent className="bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-headline flex items-center gap-2">
+              <Key size={20} className="text-primary" /> Generated Credentials
+            </DialogTitle>
+            <DialogDescription>Share these credentials with the user securely.</DialogDescription>
+          </DialogHeader>
+          {generatedCredentials && (
+            <div className="space-y-4 py-2">
+              <div className="p-4 bg-muted/50 rounded-lg border space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase text-muted-foreground">Email</p>
+                  <p className="font-mono text-sm break-all">{generatedCredentials.email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase text-muted-foreground">Temporary Password</p>
+                  <p className="font-mono text-sm break-all">{generatedCredentials.password}</p>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button type="button" variant="outline" onClick={() => setGeneratedCredentials(null)}>
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => copyToClipboard(`${generatedCredentials.email}\n${generatedCredentials.password}`)}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Copy size={16} className="mr-2" /> Copy
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoadingUsers ? (
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={`user-skeleton-${index}`}>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-44" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                </TableRow>
+              ))
+            ) : filteredUsers.length > 0 ? filteredUsers.map(appUser => (
+              <TableRow key={appUser.id}>
+                <TableCell className="font-medium">{appUser.name}</TableCell>
+                <TableCell className="text-muted-foreground">{appUser.email}</TableCell>
+                <TableCell className="text-muted-foreground">{appUser.phone}</TableCell>
+                <TableCell>{roleBadge(appUser.role)}</TableCell>
+                <TableCell>{statusBadge(appUser.status)}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatCreatedAt(appUser.createdAt)}</TableCell>
+              </TableRow>
+            )) : (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  {searchTerm
+                    ? `No users found matching "${searchTerm}".`
+                    : 'No mobile app users have been created yet.'}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -555,7 +1278,7 @@ function adminProductToProduct(ap: AdminProduct, existingProduct?: Product): Pro
 
 // ── ProductSection ───────────────────────────────────────────────────────────
 
-function ProductSection({ products, setProducts }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>> }) {
+function ProductSection({ products, setProducts, permissions }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>>, permissions: string[] }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -602,9 +1325,11 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
           <CardTitle className="text-lg">Product Catalog</CardTitle>
           <CardDescription>Create and manage your full product listings.</CardDescription>
         </div>
-        <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
-          <Plus size={16} className="mr-2" /> Add Product
-        </Button>
+        <Can permissions={permissions} perform="manage_products">
+          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+            <Plus size={16} className="mr-2" /> Add Product
+          </Button>
+        </Can>
       </CardHeader>
 
       {/* ── Add / Edit Dialog ── */}
@@ -641,7 +1366,9 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
               <TableHead>Product</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Power Rating</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <Can permissions={permissions} perform="manage_products">
+                <TableHead className="text-right">Actions</TableHead>
+              </Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -659,30 +1386,32 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
                 <TableCell className="text-muted-foreground">{product.powerRating}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
-                      <Edit size={16} />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Product?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(product.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
+                <Can permissions={permissions} perform="manage_products">
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
+                        <Edit size={16} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(product.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </Can>
               </TableRow>
             ))}
           </TableBody>
@@ -692,7 +1421,7 @@ function ProductSection({ products, setProducts }: { products: Product[], setPro
   );
 }
 
-function WarrantyManagementSection({ warranties, setWarranties, products }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[] }) {
+function WarrantyManagementSection({ warranties, setWarranties, products, permissions }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[], permissions: string[] }) {
   const { toast } = useToast();
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -702,18 +1431,6 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
       w.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [warranties, searchTerm]);
-
-  const handleUpdateStatus = (id: string, newStatus: WarrantyStatus) => {
-    const updated = warranties.map(w => w.id === id ? { ...w, status: newStatus } : w);
-    setWarranties(updated);
-    toast({ title: "Status Updated", description: `Warranty status changed to ${newStatus}.` });
-  };
-
-  const handleDelete = (id: string) => {
-    const updated = warranties.filter(w => w.id !== id);
-    setWarranties(updated);
-    toast({ title: "Warranty Deleted", description: "Record removed from registry." });
-  };
 
   const getStatusBadge = (status: WarrantyStatus) => {
     switch (status) {
@@ -731,7 +1448,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-lg">Warranty Registry</CardTitle>
-          <CardDescription>Manage product serials and customer claims.</CardDescription>
+          <CardDescription>View product serials and customer claims. (Read-Only)</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -810,39 +1527,17 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
                                 </div>
                               )}
 
-                              <div className="space-y-2">
-                                <Label>Update Status</Label>
-                                <Select defaultValue={selectedWarranty.status} onValueChange={(v: WarrantyStatus) => handleUpdateStatus(selectedWarranty.id, v)}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent className="bg-popover">
-                                    <SelectItem value="Active">Active</SelectItem>
-                                    <SelectItem value="Claim Requested">Claim Requested</SelectItem>
-                                    <SelectItem value="Claim Approved">Claim Approved</SelectItem>
-                                    <SelectItem value="Claim Rejected">Claim Rejected</SelectItem>
-                                    <SelectItem value="Expired">Expired</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              <div className="p-4 rounded-lg bg-muted border flex items-center gap-3">
+                                <ShieldCheck size={24} className="text-primary" />
+                                <div>
+                                  <p className="font-bold text-sm">Current Status</p>
+                                  <div className="mt-1">{getStatusBadge(selectedWarranty.status)}</div>
+                                </div>
                               </div>
                             </div>
                           )}
                         </DialogContent>
                       </Dialog>
-
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-card">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Warranty?</AlertDialogTitle>
-                            <AlertDialogDescription>Remove serial {w.serialNumber} from the registry.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(w.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -861,7 +1556,7 @@ function WarrantyManagementSection({ warranties, setWarranties, products }: { wa
   );
 }
 
-function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (jobs: Job[]) => void }) {
+function CareerManagementSection({ jobs, setJobs, permissions }: { jobs: Job[], setJobs: (jobs: Job[]) => void, permissions: string[] }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
@@ -925,9 +1620,11 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
           <CardTitle className="text-lg">Job Listings</CardTitle>
           <CardDescription>Manage open positions for REVOPZ.</CardDescription>
         </div>
-        <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
-          <Plus size={16} className="mr-2" /> Add Job
-        </Button>
+        <Can permissions={permissions} perform="manage_careers">
+          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+            <Plus size={16} className="mr-2" /> Add Job
+          </Button>
+        </Can>
       </CardHeader>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -975,7 +1672,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
               <TableHead>Title</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <Can permissions={permissions} perform="manage_careers"><TableHead className="text-right">Actions</TableHead></Can>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -986,30 +1683,32 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
                 <TableCell>
                   <Badge variant="secondary">{job.type}</Badge>
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
-                      <Edit size={16} />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Job?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete the "{job.title}" position?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
+                <Can permissions={permissions} perform="manage_careers">
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(job)}>
+                        <Edit size={16} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Job?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete the "{job.title}" position?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </Can>
               </TableRow>
             ))}
           </TableBody>
@@ -1019,7 +1718,7 @@ function CareerManagementSection({ jobs, setJobs }: { jobs: Job[], setJobs: (job
   );
 }
 
-function ApplicationsSection({ applications, setApplications }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void }) {
+function ApplicationsSection({ applications, setApplications, permissions }: { applications: JobApplication[], setApplications: (apps: JobApplication[]) => void, permissions: string[] }) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -1149,45 +1848,49 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
                                   "{selectedApp.message}"
                                 </div>
                               </div>
-                              <div className="space-y-2">
-                                <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
-                                <Select
-                                  defaultValue={selectedApp.status}
-                                  onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Update Status" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-popover">
-                                    <SelectItem value="New">New</SelectItem>
-                                    <SelectItem value="Under Review">Under Review</SelectItem>
-                                    <SelectItem value="Shortlisted">Shortlisted</SelectItem>
-                                    <SelectItem value="Rejected">Rejected</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                              <Can permissions={permissions} perform="manage_careers">
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground uppercase font-bold">Hiring Status</Label>
+                                  <Select
+                                    defaultValue={selectedApp.status}
+                                    onValueChange={(v: ApplicationStatus) => handleUpdateStatus(selectedApp.id, v)}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Update Status" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-popover">
+                                      <SelectItem value="New">New</SelectItem>
+                                      <SelectItem value="Under Review">Under Review</SelectItem>
+                                      <SelectItem value="Shortlisted">Shortlisted</SelectItem>
+                                      <SelectItem value="Rejected">Rejected</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </Can>
                             </div>
                           )}
                         </DialogContent>
                       </Dialog>
 
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-card">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Application?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to remove the application from {app.applicantName}? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(app.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Can permissions={permissions} perform="manage_careers">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-card">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Application?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove the application from {app.applicantName}? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(app.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </Can>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1207,314 +1910,343 @@ function ApplicationsSection({ applications, setApplications }: { applications: 
 }
 // ── ManufacturedUnitsSection ─────────────────────────────────────────────────
 
-interface MockCatalogProduct {
-  id: string;
-  name: string;
-  category: string;
-  warrantyMonths: number;
-}
+const UNIT_CATEGORIES: ManufacturedUnitCategory[] = ['Inverter', 'Battery', 'Solar', 'Other'];
 
-interface ManufacturedUnit {
-  id: string;
-  productId: string;
-  productName: string;
-  productNumber: string;
-  category: string;
-  manufacturingDate: string;
-  warrantyMonths: number;
-  status: 'Ready' | 'Registered';
-}
+const getTodayInputDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-const MOCK_CATALOG: MockCatalogProduct[] = [
-  { id: 'p1', name: 'RZ 1100+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p2', name: 'RZ 1350+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p3', name: 'RZ 1550+', category: 'Inverter', warrantyMonths: 60 },
-  { id: 'p4', name: 'RZ 200Ah Battery', category: 'Battery', warrantyMonths: 60 },
-  { id: 'p5', name: 'RZ 150Ah Battery', category: 'Battery', warrantyMonths: 60 },
-];
-
-const TODAY_ISO = new Date().toISOString().split('T')[0];
-
-function ManufacturedUnitsSection() {
+function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
   const { toast } = useToast();
-  const [units, setUnits] = useState<ManufacturedUnit[]>([
-    {
-      id: 'u1',
-      productId: 'p2',
-      productName: 'RZ 1350+',
-      productNumber: 'RZ1350-001',
-      category: 'Inverter',
-      manufacturingDate: '2026-04-01',
-      warrantyMonths: 60,
-      status: 'Ready',
-    },
-    {
-      id: 'u2',
-      productId: 'p4',
-      productName: 'RZ 200Ah Battery',
-      productNumber: 'RZ200AH-001',
-      category: 'Battery',
-      manufacturingDate: '2026-03-15',
-      warrantyMonths: 60,
-      status: 'Registered',
-    },
-  ]);
 
+  const canAdd    = hasPermission(permissions, 'add_units');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  const emptyForm = {
-    productId: '',
+  const [isDialogOpen, setIsDialogOpen]   = useState(false);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const { filteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
+  const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
-    category: '',
+    category: 'Inverter',
+    manufacturedDate: getTodayInputDate(),
     warrantyMonths: 60,
+    status: 'Ready',
   };
-  const [form, setForm] = useState(emptyForm);
+
+  const {
+    register: registerUnit,
+    handleSubmit: handleUnitSubmit,
+    reset: resetUnitForm,
+    watch: watchUnitForm,
+    setValue: setUnitValue,
+    setError: setUnitError,
+    clearErrors: clearUnitErrors,
+    formState: { errors: unitErrors, isSubmitting, isValid },
+  } = useForm<AddManufacturedUnitFormData>({
+    resolver: zodResolver(addManufacturedUnitSchema),
+    mode: 'onChange',
+    defaultValues: defaultUnitFormValues,
+  });
+
+  const watchedCategory = watchUnitForm('category');
+
+  useEffect(() => {
+    if (!unitsError) return;
+
+    console.error('[ManufacturedUnits] Firestore subscription failed:', unitsError);
+    toast({
+      title: 'Unable to load units',
+      description: 'Manufactured units could not be loaded. Please try again.',
+      variant: 'destructive',
+    });
+  }, [toast, unitsError]);
 
   const openAddDialog = () => {
-    setForm(emptyForm);
-    setFormErrors({});
+    resetUnitForm({ ...defaultUnitFormValues, manufacturedDate: getTodayInputDate() });
     setIsDialogOpen(true);
   };
 
-  const handleProductChange = (productId: string) => {
-    const selected = MOCK_CATALOG.find(p => p.id === productId);
-    if (!selected) return;
-    setForm(f => ({
-      ...f,
-      productId,
-      productName: selected.name,
-      category: selected.category,
-      warrantyMonths: selected.warrantyMonths,
-    }));
-  };
-
-  const validate = () => {
-    const errs: Record<string, string> = {};
-    if (!form.productId) errs.productId = 'Please select a product.';
-    if (!form.productNumber.trim()) errs.productNumber = 'Product number is required.';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = () => {
-    if (!validate()) return;
-    const newUnit: ManufacturedUnit = {
-      id: Math.random().toString(36).substr(2, 9),
-      productId: form.productId,
-      productName: form.productName,
-      productNumber: form.productNumber.trim().toUpperCase(),
-      category: form.category,
-      manufacturingDate: TODAY_ISO,
-      warrantyMonths: form.warrantyMonths,
-      status: 'Ready',
-    };
-    setUnits(prev => [newUnit, ...prev]);
+  const closeDialog = () => {
     setIsDialogOpen(false);
-    toast({ title: '✅ Unit Added', description: `${newUnit.productName} (${newUnit.productNumber}) added successfully.` });
   };
 
-  const handleDelete = (id: string) => {
-    setUnits(prev => prev.filter(u => u.id !== id));
-    toast({ title: 'Unit Removed', description: 'The manufactured unit has been deleted.' });
+  const onAddUnitSubmit = async (data: AddManufacturedUnitFormData) => {
+    if (!canAdd) {
+      toast({
+        title: 'Permission denied',
+        description: 'Your role cannot add manufactured units.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizedProductNumber = normalizeProductNumber(data.productNumber);
+
+    setIsCheckingDuplicate(true);
+    try {
+      const exists = await manufacturedUnitNumberExists(normalizedProductNumber);
+
+      if (exists) {
+        setUnitError('productNumber', {
+          type: 'manual',
+          message: 'This product number already exists.',
+        });
+        toast({
+          title: 'Product number already exists.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const productNumber = await addManufacturedUnit({
+        productName: data.productName,
+        productNumber: normalizedProductNumber,
+        category: data.category,
+        manufacturedDate: data.manufacturedDate,
+        warrantyMonths: data.warrantyMonths,
+        status: data.status,
+        createdBy: adminProfile.uid,
+        createdByName: adminProfile.name,
+        createdByRole: adminProfile.role,
+      });
+
+      setIsDialogOpen(false);
+      resetUnitForm(defaultUnitFormValues);
+      toast({
+        title: 'Unit Added',
+        description: `${data.productName.trim()} (${productNumber}) has been recorded.`,
+      });
+    } catch (error: any) {
+      const message = error?.message ?? 'Manufactured unit could not be added. Please try again.';
+      if (message.toLowerCase().includes('product number')) {
+        setUnitError('productNumber', { type: 'manual', message });
+      }
+      toast({
+        title: message === 'Product number already exists.' ? message : 'Add failed',
+        description: message === 'Product number already exists.' ? undefined : message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
   };
 
-  const filtered = units.filter(u =>
-    u.productNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.productName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const formatDate = (iso: string) => {
+    if (!iso) return 'Not set';
 
-  const formatDateDisplay = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const date = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return iso;
+
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const statusBadge = (s: ManufacturedUnit['status']) => {
+    if (s === 'Ready')      return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
+    if (s === 'Registered') return <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>;
+    return                         <Badge className="bg-muted text-muted-foreground">{s}</Badge>;
+  };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <div>
           <CardTitle className="text-lg flex items-center gap-2">
             <Factory size={20} className="text-primary" /> Manufactured Units
           </CardTitle>
-          <CardDescription>Manage manufactured products and track warranty-ready units.</CardDescription>
+          <CardDescription>
+            {canAdd
+              ? 'Add and track manufactured products. New units are recorded with today\'s date.'
+              : 'View and search manufactured products and warranty-ready units.'}
+          </CardDescription>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
-              placeholder="Search by product number…"
+              placeholder="Search by name or number…"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="pl-9 w-56"
             />
           </div>
-          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0">
-            <Plus size={16} className="mr-2" /> Add Unit
-          </Button>
+          {canAdd && (
+            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
+              <Plus size={16} className="mr-2" /> Add Unit
+            </Button>
+          )}
         </div>
       </CardHeader>
 
-      {/* ── Add Unit Dialog ── */}
-      <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) setIsDialogOpen(false); }}>
-        <DialogContent className="bg-card max-w-lg max-h-[90vh] overflow-y-auto">
+      {/* ── Add Unit Dialog ─────────────────────────────────────────────────── */}
+      <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) closeDialog(); }}>
+        <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-headline flex items-center gap-2">
-              <Factory size={20} className="text-primary" /> Add Manufactured Unit
+              <Factory size={20} className="text-primary" /> Add Unit
             </DialogTitle>
             <DialogDescription>
-              Select a product to auto-fill category and warranty. Manufacturing date is locked to today.
+              Fill in the unit details and enter the product serial number.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Product Select */}
+          <form onSubmit={handleUnitSubmit(onAddUnitSubmit)} className="space-y-4 py-2">
+
+            {/* Product Name */}
             <div className="space-y-1">
-              <Label htmlFor="unit-product">Product *</Label>
-              <Select value={form.productId} onValueChange={handleProductChange}>
-                <SelectTrigger id="unit-product" className={formErrors.productId ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select a product…" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  {MOCK_CATALOG.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {formErrors.productId && <p className="text-xs text-destructive">{formErrors.productId}</p>}
+              <Label htmlFor="unit-product-name">Product Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="unit-product-name"
+                placeholder="e.g. RZ 1350+"
+                {...registerUnit('productName')}
+                className={unitErrors.productName ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {unitErrors.productName && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.productName.message}</p>
+              )}
             </div>
 
             {/* Product Number */}
             <div className="space-y-1">
-              <Label htmlFor="unit-number">Product Number *</Label>
-              <Input
-                id="unit-number"
-                autoFocus
-                placeholder="e.g. RZ1350-010"
-                className={`font-mono uppercase ${formErrors.productNumber ? 'border-destructive' : ''}`}
-                value={form.productNumber}
-                onChange={e => setForm(f => ({ ...f, productNumber: e.target.value }))}
-              />
-              {formErrors.productNumber && <p className="text-xs text-destructive">{formErrors.productNumber}</p>}
+              <Label htmlFor="unit-number">Product Number (Serial Number) <span className="text-destructive">*</span></Label>
+              <div className="relative">
+                <Input
+                  id="unit-number"
+                  placeholder="e.g. RZ1350-001"
+                  {...registerUnit('productNumber', {
+                    onChange: event => {
+                      event.target.value = event.target.value.toUpperCase();
+                      if (unitErrors.productNumber?.type === 'manual') {
+                        clearUnitErrors('productNumber');
+                      }
+                    },
+                  })}
+                  className={`font-mono pr-10 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                />
+                {isCheckingDuplicate && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {unitErrors.productNumber
+                ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
+                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, and hyphens only.</p>
+              }
             </div>
 
-            {/* Category — auto-filled, disabled */}
+            {/* Category */}
             <div className="space-y-1">
-              <Label>Category</Label>
-              <Input
-                value={form.category || '—'}
-                disabled
-                className="bg-muted/40 text-muted-foreground cursor-not-allowed"
-              />
-              <p className="text-xs text-muted-foreground/70">Auto-filled from selected product.</p>
+              <Label>Category <span className="text-destructive">*</span></Label>
+              <Select value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
+                <SelectTrigger className={unitErrors.category ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select category…" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {UNIT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {unitErrors.category && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.category.message}</p>
+              )}
             </div>
 
-            {/* Warranty Months — auto-filled, editable */}
+            {/* Manufactured Date */}
             <div className="space-y-1">
-              <Label htmlFor="unit-warranty">Warranty (Months)</Label>
+              <Label htmlFor="unit-date">
+                Manufactured Date <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="unit-date"
+                type="date"
+                max={getTodayInputDate()}
+                {...registerUnit('manufacturedDate')}
+                className={unitErrors.manufacturedDate ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {unitErrors.manufacturedDate && (
+                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.manufacturedDate.message}</p>
+              )}
+            </div>
+
+            {/* Warranty */}
+            <div className="space-y-1">
+              <Label htmlFor="unit-warranty">Warranty (Months) <span className="text-destructive">*</span></Label>
               <Input
                 id="unit-warranty"
                 type="number"
                 min={1}
-                value={form.warrantyMonths}
-                onChange={e => setForm(f => ({ ...f, warrantyMonths: Number(e.target.value) }))}
-                className="w-32"
+                step={1}
+                {...registerUnit('warrantyMonths')}
+                className={unitErrors.warrantyMonths ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
-              <p className="text-xs text-muted-foreground/70">Auto-filled; you may adjust if needed.</p>
+              {unitErrors.warrantyMonths && (
+                <p className="text-xs text-destructive">{unitErrors.warrantyMonths.message}</p>
+              )}
             </div>
 
-            {/* Manufacturing Date — locked to today */}
-            <div className="space-y-1">
-              <Label className="flex items-center gap-1">
-                <CalendarDays size={13} /> Manufacturing Date
-                <Lock size={11} className="ml-0.5 text-muted-foreground opacity-70" />
-              </Label>
-              <Input
-                value={formatDateDisplay(TODAY_ISO)}
-                readOnly
-                tabIndex={-1}
-                className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 font-medium"
-              />
-              <p className="text-xs text-muted-foreground/70 flex items-center gap-1">
-                <Lock size={10} /> Automatically set to today's date.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="pt-4 flex gap-3 sticky bottom-0 bg-card pb-1">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              <X size={16} className="mr-2" /> Cancel
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={!form.productId || !form.productNumber.trim()}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Factory size={16} className="mr-2" /> Add Unit
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
+              <Button type="button" variant="outline" onClick={closeDialog} disabled={isSubmitting}>
+                <X size={16} className="mr-2" /> Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!isValid || isSubmitting || isCheckingDuplicate}
+                className="bg-primary hover:bg-primary/90 min-w-[120px]"
+              >
+                {isCheckingDuplicate
+                  ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
+                  : isSubmitting
+                    ? <><Loader2 size={14} className="mr-2 animate-spin" /> Saving...</>
+                  : <><Factory size={16} className="mr-2" /> Add Unit</>}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* ── Table ── */}
+      {/* ── Table ─────────────────────────────────────────────────────────────── */}
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Product Name</TableHead>
-              <TableHead>Product Number</TableHead>
+              <TableHead>Product No.</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Mfg. Date</TableHead>
-              <TableHead>Warranty (Mo.)</TableHead>
+              <TableHead className="text-center">Warranty (Mo.)</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length > 0 ? filtered.map(unit => (
+            {isLoadingUnits ? (
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={`unit-skeleton-${index}`}>
+                  <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell className="text-center"><Skeleton className="mx-auto h-4 w-12" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                </TableRow>
+              ))
+            ) : filteredUnits.length > 0 ? filteredUnits.map(unit => (
               <TableRow key={unit.id}>
                 <TableCell className="font-medium">{unit.productName}</TableCell>
                 <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
-                <TableCell className="text-muted-foreground capitalize">{unit.category}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDateDisplay(unit.manufacturingDate)}</TableCell>
+                <TableCell className="text-muted-foreground">{unit.category}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
                 <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
-                <TableCell>
-                  {unit.status === 'Ready'
-                    ? <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>
-                    : <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>}
-                </TableCell>
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hover:text-destructive">
-                        <Trash2 size={16} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-card">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Unit?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Remove <span className="font-mono font-bold">{unit.productNumber}</span> from the manufactured units list. This cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDelete(unit.id)}
-                          className="bg-destructive hover:bg-destructive/90"
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </TableCell>
+                <TableCell>{statusBadge(unit.status)}</TableCell>
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   {searchTerm
                     ? `No units found matching "${searchTerm}".`
-                    : 'No manufactured units yet. Click "+ Add Unit" to get started.'}
+                    : canAdd
+                      ? 'No manufactured units yet. Click "Add Unit" to get started.'
+                      : 'No manufactured units have been recorded yet.'}
                 </TableCell>
               </TableRow>
             )}
