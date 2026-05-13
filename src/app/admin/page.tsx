@@ -46,6 +46,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
+import { EditProfileModal } from './components/EditProfileModal';
 import type { AdminProduct } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
@@ -323,9 +324,13 @@ export default function AdminPage() {
                 <span className="font-bold text-sm">{adminProfile.name}</span>
                 <span className="text-xs text-primary font-medium">{displayRole}</span>
               </div>
-              <div className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold select-none">
+              <button
+                onClick={() => setActiveTab('profile')}
+                title="Edit Profile"
+                className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold select-none hover:bg-primary/30 transition-colors cursor-pointer"
+              >
                 {initials}
-              </div>
+              </button>
             </div>
           </div>
 
@@ -366,9 +371,48 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
   const [resetPasswordVal, setResetPasswordVal] = useState('');
+
+  // ── Load all admins from API on mount ─────────────────────────────────────
+  const loadAdmins = async () => {
+    setIsLoadingAdmins(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+
+      const response = await fetch('/api/admin/admins', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error('[ProfileSection] Failed to load admins:', payload?.error);
+        return;
+      }
+
+      const { admins: serverAdmins } = await response.json();
+      const mapped: AdminUser[] = serverAdmins.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        role: toDisplayRole(a.role),
+      }));
+      setAdmins(mapped);
+    } catch (err) {
+      console.error('[ProfileSection] Error fetching admins:', err);
+    } finally {
+      setIsLoadingAdmins(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAdmins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── React Hook Form setup ──────────────────────────────────────────────────
   const {
@@ -406,20 +450,44 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
 
   const onAddAdminSubmit = async (data: AddAdminFormData) => {
     setIsSubmitting(true);
-    // Simulate a brief async operation (replace with Firebase call later)
-    await new Promise(r => setTimeout(r, 500));
-    const newAdmin: AdminUser = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      role: data.role
-    };
-    setAdmins(prev => [...prev, newAdmin]);
-    toast({ title: "Admin Added", description: `${newAdmin.name} is now a ${newAdmin.role}.` });
-    reset();
-    setShowPassword(false);
-    setIsAddDialogOpen(false);
-    setIsSubmitting(false);
+
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+
+      if (!idToken) {
+        throw new Error('You must be logged in to create an admin.');
+      }
+
+      const response = await fetch('/api/admin/admins', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || 'Admin could not be created. Please try again.');
+      }
+
+      toast({ title: 'Admin Added', description: `${data.name.trim()} is now a ${data.role}.` });
+      reset();
+      setShowPassword(false);
+      setIsAddDialogOpen(false);
+      // Refresh from Firestore to guarantee accurate list
+      await loadAdmins();
+    } catch (error: any) {
+      toast({
+        title: 'Creation Failed',
+        description: error.message || 'An unexpected error occurred.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleGenerateResetPassword = () => {
@@ -450,10 +518,33 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
 
   return (
     <div className="space-y-6">
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        open={isEditProfileOpen}
+        onOpenChange={setIsEditProfileOpen}
+        adminProfile={adminProfile}
+        permissions={permissions}
+        onProfileUpdated={(updates) => {
+          // Optimistically reflect name/email changes in the admins list
+          if (updates.name || updates.email) {
+            setAdmins(prev =>
+              prev.map(a =>
+                a.id === adminProfile.uid
+                  ? { ...a, ...(updates.name && { name: updates.name }), ...(updates.email && { email: updates.email }) }
+                  : a
+              )
+            );
+          }
+        }}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1 border-primary/20 bg-primary/5">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Your Profile</CardTitle>
+            <Button size="sm" variant="outline" className="border-primary/30 hover:bg-primary/10 hover:text-primary" onClick={() => setIsEditProfileOpen(true)}>
+              <Edit size={14} className="mr-1.5" /> Edit
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col items-center py-4">

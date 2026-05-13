@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { addAppUserSchema } from '@/lib/validations';
 
 export const runtime = 'nodejs';
@@ -13,7 +13,7 @@ function getBearerToken(request: NextRequest): string | null {
 }
 
 function errorResponse(message: string, status: number) {
-  return NextResponse.json({ message }, { status });
+  return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(request: NextRequest) {

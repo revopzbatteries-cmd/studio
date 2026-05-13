@@ -102,7 +102,7 @@ export async function createAppUser(
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? 'User could not be created. Please try again.');
+    throw new Error(payload?.error ?? payload?.message ?? 'User could not be created. Please try again.');
   }
 
   return payload as CreateAppUserResponse;
