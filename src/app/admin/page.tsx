@@ -16,6 +16,7 @@ import {
   Users,
   Plus,
   Edit,
+  Pencil,
   Trash2,
   LogOut,
   CheckCircle2,
@@ -96,6 +97,7 @@ export default function AdminPage() {
   const { user, adminProfile, loading: authLoading, accessDenied, logout } = useAuth();
 
   const [activeTab, setActiveTab] = useState('profile');
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   // Login State
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -292,7 +294,15 @@ export default function AdminPage() {
           </Can>
         </nav>
 
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-1">
+          {/* Edit Profile — accessible to every role */}
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-muted-foreground hover:text-primary hover:bg-primary/10"
+            onClick={() => setIsEditProfileOpen(true)}
+          >
+            <Pencil size={18} className="mr-3" /> Edit Profile
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
             <LogOut size={20} className="mr-3" /> Logout
           </Button>
@@ -325,7 +335,9 @@ export default function AdminPage() {
                 <span className="text-xs text-primary font-medium">{displayRole}</span>
               </div>
               <button
-                onClick={() => setActiveTab('profile')}
+                onClick={() =>
+                  isProductionUnit ? setIsEditProfileOpen(true) : setActiveTab('profile')
+                }
                 title="Edit Profile"
                 className="h-10 w-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold select-none hover:bg-primary/30 transition-colors cursor-pointer"
               >
@@ -335,6 +347,17 @@ export default function AdminPage() {
           </div>
 
           <div className="grid gap-6">
+            {/* Edit Profile Modal — accessible at the dashboard level for all roles */}
+            <EditProfileModal
+              open={isEditProfileOpen}
+              onOpenChange={setIsEditProfileOpen}
+              adminProfile={adminProfile}
+              permissions={permissions}
+              onProfileUpdated={(_updates) => {
+                // Profile refreshes automatically via AuthContext onAuthStateChanged
+              }}
+            />
+
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
             {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
