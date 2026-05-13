@@ -13,6 +13,7 @@ import {
   Package,
   ShieldCheck,
   UserCircle,
+  Users,
   Plus,
   Edit,
   Trash2,
@@ -52,6 +53,13 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Role, Can, hasPermission, toDisplayRole, getEffectivePermissions } from '@/lib/rbac';
 import { AdminProfile, getInitials } from '@/lib/adminService';
 import {
+  appUserEmailExists,
+  createAppUser,
+  type AppUser,
+  type AppUserStatus,
+} from '@/lib/appUsers';
+import { useAppUsers } from '@/hooks/useAppUsers';
+import {
   addManufacturedUnit,
   manufacturedUnitNumberExists,
   type ManufacturedUnit,
@@ -64,10 +72,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   loginSchema,
   addAdminSchema,
+  addAppUserSchema,
   addManufacturedUnitSchema,
   normalizeProductNumber,
   type LoginFormData,
   type AddAdminFormData,
+  type AddAppUserFormData,
   type AddManufacturedUnitFormData,
   checkPasswordStrength,
 } from '@/lib/validations';
@@ -266,6 +276,9 @@ export default function AdminPage() {
           <Can permissions={permissions} perform="manage_products">
             <SidebarButton active={resolvedTab === 'products'} onClick={() => setActiveTab('products')} icon={<Package size={20} />} label="Product Mgmt" />
           </Can>
+          <Can permissions={permissions} perform="manage_users">
+            <SidebarButton active={resolvedTab === 'users'} onClick={() => setActiveTab('users')} icon={<Users size={20} />} label="User Mgmt" />
+          </Can>
           <Can permissions={permissions} perform="manage_units">
             <SidebarButton active={resolvedTab === 'units'} onClick={() => setActiveTab('units')} icon={<Factory size={20} />} label="Manufactured Units" />
           </Can>
@@ -292,12 +305,15 @@ export default function AdminPage() {
               <h1 className="text-3xl font-bold font-headline capitalize">
                 {resolvedTab === 'profile' ? 'Profile Management' :
                   resolvedTab === 'products' ? 'Product Catalog' :
+                    resolvedTab === 'users' ? 'User Management' :
                     resolvedTab === 'units' ? 'Manufactured Units' :
                       resolvedTab === 'warranty' ? 'Warranty Registry' :
                         resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">
-                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' : 'Manage your REVOPZ system operations and data.'}
+                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
+                  resolvedTab === 'users' ? 'Create and manage mobile application users.' :
+                    'Manage your REVOPZ system operations and data.'}
               </p>
             </div>
 
@@ -316,6 +332,7 @@ export default function AdminPage() {
           <div className="grid gap-6">
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
+            {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} permissions={permissions} />}
             {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
@@ -673,6 +690,432 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
         </Card>
       </div>
     </div>
+  );
+}
+
+function UserManagementSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
+  const { toast } = useToast();
+  const canManageUsers = hasPermission(permissions, 'manage_users') && adminProfile.role === 'manager';
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [passwordWasGenerated, setPasswordWasGenerated] = useState(false);
+  const { filteredUsers, isLoadingUsers, error: usersError } = useAppUsers(searchTerm);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    setError,
+    clearErrors,
+    watch,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm<AddAppUserFormData>({
+    resolver: zodResolver(addAppUserSchema),
+    mode: 'onChange',
+    defaultValues: {
+      name: '',
+      email: '',
+      phone: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
+
+  const watchedPassword = watch('password', '');
+  const watchedConfirmPassword = watch('confirmPassword', '');
+  const passwordConditions = checkPasswordStrength(watchedPassword);
+  const passwordMet = passwordConditions.filter(c => c.met).length;
+  const passwordStrength = passwordMet === 5 ? 'strong' : passwordMet >= 3 ? 'medium' : 'weak';
+
+  useEffect(() => {
+    if (!usersError) return;
+
+    console.error('[UserManagement] Firestore subscription failed:', usersError);
+    toast({
+      title: 'Unable to load users',
+      description: 'Mobile app users could not be loaded. Please try again.',
+      variant: 'destructive',
+    });
+  }, [toast, usersError]);
+
+  const resetAddUserDialog = () => {
+    reset();
+    setShowPassword(false);
+    setIsCheckingEmail(false);
+    setPasswordWasGenerated(false);
+  };
+
+  const handleGeneratePassword = () => {
+    const password = generateSecurePassword(12);
+
+    setValue('password', password, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue('confirmPassword', password, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setPasswordWasGenerated(true);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Copied!', description: 'Password copied to clipboard.' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to copy.', variant: 'destructive' });
+    }
+  };
+
+  const roleBadge = (role: AppUser['role']) => {
+    return <Badge className="bg-primary hover:bg-primary/90">{role === 'user' ? 'User' : role}</Badge>;
+  };
+
+  const statusBadge = (status: AppUserStatus) => {
+    return <Badge className="bg-green-600 hover:bg-green-700">{status === 'active' ? 'Active' : status}</Badge>;
+  };
+
+  const formatCreatedAt = (createdAt: AppUser['createdAt']) => {
+    if (!createdAt) return 'Pending';
+    return createdAt.toDate().toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const onAddUserSubmit = async (data: AddAppUserFormData) => {
+    if (!canManageUsers) {
+      toast({
+        title: 'Permission denied',
+        description: 'Only managers can create mobile app users.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizedEmail = data.email.trim().toLowerCase();
+
+    setIsCheckingEmail(true);
+    try {
+      const exists = await appUserEmailExists(normalizedEmail);
+
+      if (exists) {
+        setError('email', {
+          type: 'manual',
+          message: 'Email already exists.',
+        });
+        toast({
+          title: 'Email already exists.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Your admin session expired. Please sign in again.');
+      }
+
+      await createAppUser({ ...data, email: normalizedEmail }, idToken);
+
+      toast({
+        title: 'User Added',
+        description: `${data.name.trim()} can now sign in to the mobile app.`,
+      });
+      if (passwordWasGenerated) {
+        setGeneratedCredentials({
+          email: normalizedEmail,
+          password: data.password,
+        });
+      }
+      setIsAddDialogOpen(false);
+      resetAddUserDialog();
+    } catch (error: any) {
+      const message = error?.message ?? 'User could not be created. Please try again.';
+
+      if (message.toLowerCase().includes('email')) {
+        setError('email', { type: 'manual', message });
+      }
+
+      if (message.toLowerCase().includes('phone')) {
+        setError('phone', { type: 'manual', message });
+      }
+
+      toast({
+        title: message === 'Email already exists.' ? message : 'Add failed',
+        description: message === 'Email already exists.' ? undefined : message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
+
+  const strengthBarClass = passwordStrength === 'strong'
+    ? 'bg-green-500'
+    : passwordStrength === 'medium'
+      ? 'bg-yellow-500'
+      : 'bg-destructive';
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+        <div>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Users size={20} className="text-primary" /> User Management
+          </CardTitle>
+          <CardDescription>Create and manage mobile application users.</CardDescription>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-9 w-56"
+            />
+          </div>
+          {canManageUsers && (
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+              if (!open) resetAddUserDialog();
+              setIsAddDialogOpen(open);
+            }}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary hover:bg-primary/90 shrink-0">
+                  <Plus size={16} className="mr-2" /> Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-headline flex items-center gap-2">
+                    <Users size={20} className="text-primary" /> Add User
+                  </DialogTitle>
+                  <DialogDescription>Create credentials for a mobile application user.</DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit(onAddUserSubmit)} className="space-y-4 py-2" noValidate>
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-name">Full Name <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-name"
+                      placeholder="e.g. John Smith"
+                      {...register('name')}
+                      className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.name && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.name.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-email">Email <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-email"
+                      type="email"
+                      placeholder="user@example.com"
+                      {...register('email', {
+                        onChange: () => {
+                          if (errors.email?.type === 'manual') clearErrors('email');
+                        },
+                      })}
+                      className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.email && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.email.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-phone">Phone Number <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-phone"
+                      placeholder="+919876543210"
+                      {...register('phone')}
+                      className={errors.phone ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.phone && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.phone.message}</p>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="app-user-password">Password <span className="text-destructive">*</span></Label>
+                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
+                        <RefreshCcw size={12} className="mr-1" /> Generate
+                      </Button>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="app-user-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Create a strong password"
+                        {...register('password', {
+                          onChange: () => setPasswordWasGenerated(false),
+                        })}
+                        className={`pr-20 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(watchedPassword)} disabled={!watchedPassword}>
+                          <Copy size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                    {errors.password && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.password.message}</p>}
+
+                    {watchedPassword.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${strengthBarClass}`}
+                              style={{ width: `${(passwordMet / 5) * 100}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
+                            passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                          }`}>
+                            {passwordStrength}
+                          </span>
+                        </div>
+                        <ul className="space-y-1">
+                          {passwordConditions.map(condition => (
+                            <li key={condition.label} className={`flex items-center gap-1.5 text-xs ${condition.met ? 'text-green-500' : 'text-muted-foreground'}`}>
+                              {condition.met ? <CheckCircle2 size={11} /> : <X size={11} />}
+                              {condition.label}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="app-user-confirm-password">Confirm Password <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="app-user-confirm-password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Re-enter password"
+                      {...register('confirmPassword')}
+                      className={errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
+                    {errors.confirmPassword
+                      ? <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.confirmPassword.message}</p>
+                      : watchedConfirmPassword && watchedConfirmPassword === watchedPassword
+                        ? <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle2 size={11} />Passwords match</p>
+                        : null}
+                  </div>
+
+                  <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
+                    <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting || isCheckingEmail}>
+                      <X size={16} className="mr-2" /> Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={!isValid || isSubmitting || isCheckingEmail}
+                      className="bg-primary hover:bg-primary/90 min-w-[130px]"
+                    >
+                      {isCheckingEmail
+                        ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
+                        : isSubmitting
+                          ? <><Loader2 size={14} className="mr-2 animate-spin" /> Creating...</>
+                          : <><Users size={16} className="mr-2" /> Create User</>}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      </CardHeader>
+
+      <Dialog open={!!generatedCredentials} onOpenChange={(open) => { if (!open) setGeneratedCredentials(null); }}>
+        <DialogContent className="bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-headline flex items-center gap-2">
+              <Key size={20} className="text-primary" /> Generated Credentials
+            </DialogTitle>
+            <DialogDescription>Share these credentials with the user securely.</DialogDescription>
+          </DialogHeader>
+          {generatedCredentials && (
+            <div className="space-y-4 py-2">
+              <div className="p-4 bg-muted/50 rounded-lg border space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase text-muted-foreground">Email</p>
+                  <p className="font-mono text-sm break-all">{generatedCredentials.email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase text-muted-foreground">Temporary Password</p>
+                  <p className="font-mono text-sm break-all">{generatedCredentials.password}</p>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button type="button" variant="outline" onClick={() => setGeneratedCredentials(null)}>
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => copyToClipboard(`${generatedCredentials.email}\n${generatedCredentials.password}`)}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Copy size={16} className="mr-2" /> Copy
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoadingUsers ? (
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={`user-skeleton-${index}`}>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-44" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                </TableRow>
+              ))
+            ) : filteredUsers.length > 0 ? filteredUsers.map(appUser => (
+              <TableRow key={appUser.id}>
+                <TableCell className="font-medium">{appUser.name}</TableCell>
+                <TableCell className="text-muted-foreground">{appUser.email}</TableCell>
+                <TableCell className="text-muted-foreground">{appUser.phone}</TableCell>
+                <TableCell>{roleBadge(appUser.role)}</TableCell>
+                <TableCell>{statusBadge(appUser.status)}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatCreatedAt(appUser.createdAt)}</TableCell>
+              </TableRow>
+            )) : (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  {searchTerm
+                    ? `No users found matching "${searchTerm}".`
+                    : 'No mobile app users have been created yet.'}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
