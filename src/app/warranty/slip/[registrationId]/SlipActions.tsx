@@ -15,7 +15,7 @@ export default function SlipActions({ filename }: { filename: string }) {
   const handleDownloadPdf = async () => {
     setIsDownloading(true);
     try {
-      const element = document.getElementById('warranty-slip-content');
+      const element = document.getElementById('warranty-slip-print');
       if (!element) return;
 
       // Ensure html2pdf is loaded from the script tag

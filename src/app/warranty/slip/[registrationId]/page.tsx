@@ -36,14 +36,32 @@ export default async function WarrantySlipPage({ params }: { params: Promise<{ r
 
         {/* The Printable Slip */}
         <div
-          id="warranty-slip-content"
-          className="bg-card border border-border/50 rounded-2xl p-8 md:p-12 shadow-2xl relative overflow-hidden print:shadow-none print:border-none print:p-0 print:rounded-none"
+          id="warranty-slip-print"
+          className="bg-card border border-border/50 rounded-2xl p-8 md:p-12 shadow-2xl relative overflow-hidden print:shadow-none print:border-none print:p-0 print:rounded-none print:m-0"
         >
           {/* Print specific styling overrides */}
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
+              body * {
+                visibility: hidden;
+              }
+              #warranty-slip-print,
+              #warranty-slip-print * {
+                visibility: visible;
+              }
+              #warranty-slip-print {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background: white !important;
+                color: black !important;
+                margin: 0;
+                padding: 0;
+              }
+              
               @page { margin: 15mm; size: A4 portrait; }
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
               .print-border { border: 1px solid #e5e7eb !important; }
               .print-text-dark { color: #111827 !important; }
               .print-bg-light { background-color: #f9fafb !important; }
