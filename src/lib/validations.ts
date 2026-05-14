@@ -105,6 +105,30 @@ export const addManufacturedUnitSchema = z.object({
   }),
 });
 
+export const productSchema = z.object({
+  name: z.string().trim().min(3, "Name must be at least 3 characters"),
+  slug: z.string().trim().min(1, "Slug is required"),
+  category: z.enum(['inverters', 'batteries', 'systems']),
+  powerRating: z.string().trim().min(1, "Power rating is required"),
+  description: z.string().trim().min(1, "Description is required"),
+  fullDescription: z.string().trim().optional().or(z.literal('')),
+  image: z.string().url("Valid image URL is required").optional().or(z.literal('')),
+  imagePublicId: z.string().optional().or(z.literal('')),
+  performance: z.array(z.string()).optional().default([]),
+  features: z.array(z.string()).optional().default([]),
+  safety: z.array(z.string()).optional().default([]),
+  idealFor: z.array(z.string()).optional().default([]),
+  specifications: z.array(z.object({
+    key: z.string(),
+    value: z.string()
+  })).optional().default([]),
+  warranty: z.string().optional().or(z.literal('')),
+  installation: z.string().optional().or(z.literal('')),
+  isPublished: z.boolean(),
+  isFeatured: z.boolean(),
+  displayOrder: z.number().int().min(0),
+});
+
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type AddAdminFormData = z.infer<typeof addAdminSchema>;
 export type AddAppUserFormData = z.infer<typeof addAppUserSchema>;

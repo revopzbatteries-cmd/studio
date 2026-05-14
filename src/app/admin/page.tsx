@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'; import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
@@ -34,11 +33,12 @@ import {
   Key,
   EyeOff,
   Copy,
-  RefreshCcw
+  RefreshCcw,
+  Globe,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
-import { PRODUCTS as initialProducts, Product } from '@/lib/products';
+import type { FirestoreProduct } from './types';
 import { Job, INITIAL_JOBS, JobType } from '@/lib/jobs';
 import { JobApplication, INITIAL_APPLICATIONS, ApplicationStatus } from '@/lib/applications';
 import { WarrantyEntry, INITIAL_WARRANTIES, WarrantyStatus } from '@/lib/warranty';
@@ -49,6 +49,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
 import { EditProfileModal } from './components/EditProfileModal';
 import type { AdminProduct } from './types';
+import { firestoreToAdmin, adminToFirestore } from './types';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -108,7 +109,8 @@ export default function AdminPage() {
 
   // Data State
   const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  // products are managed internally by ProductSection (self-fetching)
+
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
@@ -317,9 +319,9 @@ export default function AdminPage() {
                 {resolvedTab === 'profile' ? 'Profile Management' :
                   resolvedTab === 'products' ? 'Product Catalog' :
                     resolvedTab === 'users' ? 'User Management' :
-                    resolvedTab === 'units' ? 'Manufactured Units' :
-                      resolvedTab === 'warranty' ? 'Warranty Registry' :
-                        resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
+                      resolvedTab === 'units' ? 'Manufactured Units' :
+                        resolvedTab === 'warranty' ? 'Warranty Registry' :
+                          resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
               </h1>
               <p className="text-muted-foreground">
                 {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
@@ -359,10 +361,10 @@ export default function AdminPage() {
             />
 
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
-            {resolvedTab === 'products' && <ProductSection products={products} setProducts={setProducts} permissions={permissions} />}
+            {resolvedTab === 'products' && <ProductSection permissions={permissions} />}
             {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
-            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} products={products} permissions={permissions} />}
+            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} permissions={permissions} />}
             {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
             {resolvedTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} permissions={permissions} />}
           </div>
@@ -711,7 +713,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                                 />
                               </div>
                               <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
-                                  passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
+                                passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
                                 }`}>
                                 {passwordStrength}
                               </span>
@@ -1092,7 +1094,7 @@ function UserManagementSection({ permissions, adminProfile }: { permissions: str
                           </div>
                           <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
                             passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
-                          }`}>
+                            }`}>
                             {passwordStrength}
                           </span>
                         </div>
@@ -1233,195 +1235,301 @@ function UserManagementSection({ permissions, adminProfile }: { permissions: str
   );
 }
 
-// ── Helpers: convert between library Product type and AdminProduct form type ─
+// ── ProductSection — Firestore-backed ────────────────────────────────────────
 
-function productToAdminProduct(p: Product): AdminProduct {
-  const specsArray = Object.entries(p.specs).map(([key, value]) => ({ key, value }));
-  return {
-    id: p.id,
-    name: p.name,
-    category: p.category,
-    powerRating: p.powerRating,
-    description: p.shortDescription,
-    image: p.image,
-    performance: p.performance ?? [],
-    features: p.features,
-    safety: p.safety ?? [],
-    idealFor: p.idealFor,
-    specifications: specsArray,
-    warranty: p.warranty ?? '',
-    installation: p.installation ?? '',
-  };
-}
-
-function adminProductToProduct(ap: AdminProduct, existingProduct?: Product): Product {
-  const specs: Record<string, string> = {};
-  ap.specifications.forEach(s => { if (s.key.trim()) specs[s.key.trim()] = s.value; });
-  return {
-    id: ap.id || Math.random().toString(36).substr(2, 9),
-    slug: existingProduct?.slug ?? ap.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-    name: ap.name,
-    category: ap.category,
-    powerRating: ap.powerRating,
-    shortDescription: ap.description,
-    fullDescription: existingProduct?.fullDescription ?? '',
-    performance: ap.performance,
-    features: ap.features,
-    safety: ap.safety,
-    specs,
-    idealFor: ap.idealFor,
-    image: ap.image,
-    warranty: ap.warranty || undefined,
-    installation: ap.installation || undefined,
-  };
-}
-
-// ── ProductSection ───────────────────────────────────────────────────────────
-
-function ProductSection({ products, setProducts, permissions }: { products: Product[], setProducts: React.Dispatch<React.SetStateAction<Product[]>>, permissions: string[] }) {
+function ProductSection({ permissions }: { permissions: string[] }) {
   const { toast } = useToast();
+  const [products, setProducts] = useState<FirestoreProduct[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<FirestoreProduct | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const openAddDialog = () => {
-    setEditingProduct(null);
-    setIsDialogOpen(true);
-  };
+  // Load products from Firestore on mount
+  const loadProducts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) return;
+      const res = await fetch('/api/products', { headers: { Authorization: `Bearer ${idToken}` } });
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setProducts(data.products ?? []);
+    } catch (err: any) {
+      toast({ title: 'Failed to load products', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
-  const openEditDialog = (product: Product) => {
-    setEditingProduct(product);
-    setIsDialogOpen(true);
-  };
+  useEffect(() => { loadProducts(); }, [loadProducts]);
 
+  const openAddDialog = () => { setEditingProduct(null); setIsDialogOpen(true); };
+  const openEditDialog = (p: FirestoreProduct) => { setEditingProduct(p); setIsDialogOpen(true); };
   const handleCancel = () => setIsDialogOpen(false);
 
-  const handleDelete = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    toast({ title: 'Product Deleted', description: 'The product has been removed from the catalog.' });
+  const handleSave = async (adminProduct: AdminProduct) => {
+    setIsSaving(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not authenticated.');
+
+      const payload = adminToFirestore(adminProduct);
+
+      if (editingProduct) {
+        // Update existing
+        const res = await fetch(`/api/products/${editingProduct.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Update failed.');
+        toast({ title: 'Product Updated', description: `"${adminProduct.name}" has been updated.` });
+      } else {
+        // Create new
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Create failed.');
+        toast({ title: 'Product Added', description: `"${adminProduct.name}" has been added.` });
+      }
+
+      setIsDialogOpen(false);
+      await loadProducts();
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSave = (adminProduct: AdminProduct) => {
-    if (editingProduct) {
-      setProducts(prev =>
-        prev.map(p =>
-          p.id === editingProduct.id
-            ? adminProductToProduct(adminProduct, editingProduct)
-            : p
-        )
-      );
-      toast({ title: 'Product Updated', description: `"${adminProduct.name}" has been updated successfully.` });
-    } else {
-      const newProduct = adminProductToProduct(adminProduct);
-      setProducts(prev => [...prev, newProduct]);
-      toast({ title: 'Product Added', description: `"${adminProduct.name}" has been added to the catalog.` });
+  const handleDelete = async (product: FirestoreProduct) => {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not authenticated.');
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? 'Delete failed.');
+      }
+      toast({ title: 'Product Deleted', description: `"${product.name}" has been removed.` });
+      await loadProducts();
+    } catch (err: any) {
+      toast({ title: 'Delete failed', description: err.message, variant: 'destructive' });
     }
-    setIsDialogOpen(false);
   };
+
+  const togglePublish = async (product: FirestoreProduct) => {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not authenticated.');
+      await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ isPublished: !product.isPublished }),
+      });
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isPublished: !p.isPublished } : p));
+    } catch (err: any) {
+      toast({ title: 'Toggle failed', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const toggleFeatured = async (product: FirestoreProduct) => {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not authenticated.');
+      await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ isFeatured: !product.isFeatured }),
+      });
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isFeatured: !p.isFeatured } : p));
+    } catch (err: any) {
+      toast({ title: 'Toggle failed', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const s = search.toLowerCase();
+    if (!s) return products;
+    return products.filter(p =>
+      p.name.toLowerCase().includes(s) ||
+      p.category.toLowerCase().includes(s) ||
+      p.powerRating?.toLowerCase().includes(s)
+    );
+  }, [products, search]);
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <div>
           <CardTitle className="text-lg">Product Catalog</CardTitle>
           <CardDescription>Create and manage your full product listings.</CardDescription>
         </div>
-        <Can permissions={permissions} perform="manage_products">
-          <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
-            <Plus size={16} className="mr-2" /> Add Product
-          </Button>
-        </Can>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              placeholder="Search products…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 w-52"
+            />
+          </div>
+          <Can permissions={permissions} perform="manage_products">
+            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90">
+              <Plus size={16} className="mr-2" /> Add Product
+            </Button>
+          </Can>
+        </div>
       </CardHeader>
 
       {/* ── Add / Edit Dialog ── */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
-        <DialogContent className="max-w-2xl bg-card max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="text-lg font-bold">
-              {editingProduct ? `Edit: ${editingProduct.name}` : 'Add New Product'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingProduct
-                ? 'Update all product details — changes are saved immediately to the catalog.'
-                : 'Fill in all sections to create a complete product listing.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-hidden">
-            <ProductForm
-              key={editingProduct?.id ?? 'new'}
-              initialData={editingProduct ? productToAdminProduct(editingProduct) : undefined}
-              onSave={handleSave}
-              onCancel={handleCancel}
-            />
+        <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden bg-background p-0 sm:p-0">
+          <div className="px-6 pt-6 shrink-0">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">
+                {editingProduct ? `Edit: ${editingProduct.name}` : 'Add New Product'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingProduct
+                  ? 'Update all product details — changes sync to Firestore and the live website.'
+                  : 'Fill in all sections to create a complete product listing.'}
+              </DialogDescription>
+            </DialogHeader>
           </div>
+          
+          <ProductForm
+            key={editingProduct?.id ?? 'new'}
+            initialData={editingProduct ? firestoreToAdmin(editingProduct) : undefined}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            isSaving={isSaving}
+          />
         </DialogContent>
       </Dialog>
 
       {/* ── Product Table ── */}
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-20">Image</TableHead>
-              <TableHead>Product</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Power Rating</TableHead>
-              <Can permissions={permissions} perform="manage_products">
-                <TableHead className="text-right">Actions</TableHead>
-              </Can>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {products.map((product) => (
-              <TableRow key={product.id}>
-                <TableCell>
-                  <div className="h-12 w-16 rounded-md overflow-hidden bg-muted flex items-center justify-center border">
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageIcon className="text-muted-foreground/50" size={16} />
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="font-medium">{product.name}</TableCell>
-                <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
-                <TableCell className="text-muted-foreground">{product.powerRating}</TableCell>
+        {isLoading ? (
+          <div className="space-y-2 py-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">Image</TableHead>
+                <TableHead>Product</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Power</TableHead>
+                <TableHead>Status</TableHead>
                 <Can permissions={permissions} perform="manage_products">
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" className="hover:text-primary" onClick={() => openEditDialog(product)}>
-                        <Edit size={16} />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-destructive"><Trash2 size={16} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-card">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Product?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently remove &quot;{product.name}&quot; from the catalog. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(product.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
+                  <TableHead className="text-right">Actions</TableHead>
                 </Can>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    {search ? 'No products match your search.' : 'No products yet. Click "Add Product" to get started.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map(product => (
+                  <TableRow key={product.id}>
+                    <TableCell>
+                      <div className="h-12 w-16 rounded-md overflow-hidden bg-muted flex items-center justify-center border">
+                        {product.imageUrl ? (
+                          <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <ImageIcon className="text-muted-foreground/50" size={16} />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{product.powerRating}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Badge
+                          className={product.isPublished ? 'bg-green-600 hover:bg-green-700' : 'bg-muted text-muted-foreground hover:bg-muted'}
+                        >
+                          {product.isPublished ? 'Published' : 'Draft'}
+                        </Badge>
+                        {product.isFeatured && (
+                          <Badge className="bg-primary hover:bg-primary/90 text-xs">Featured</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <Can permissions={permissions} perform="manage_products">
+                      <TableCell className="text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`text-xs px-2 h-7 ${product.isPublished ? 'hover:text-orange-500' : 'hover:text-green-500'}`}
+                            onClick={() => togglePublish(product)}
+                            title={product.isPublished ? 'Unpublish' : 'Publish'}
+                          >
+                            <Globe size={13} className="mr-1" />
+                            {product.isPublished ? 'Unpublish' : 'Publish'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:text-primary h-7 w-7"
+                            onClick={() => openEditDialog(product)}
+                            title="Edit"
+                          >
+                            <Edit size={15} />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="hover:text-destructive h-7 w-7">
+                                <Trash2 size={15} />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-card">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently remove &quot;{product.name}&quot; and its Cloudinary image. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(product)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </Can>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function WarrantyManagementSection({ warranties, setWarranties, products, permissions }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, products: Product[], permissions: string[] }) {
+function WarrantyManagementSection({ warranties, setWarranties, permissions }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, permissions: string[] }) {
   const { toast } = useToast();
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1923,9 +2031,9 @@ const getTodayInputDate = () => {
 function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
   const { toast } = useToast();
 
-  const canAdd    = hasPermission(permissions, 'add_units');
+  const canAdd = hasPermission(permissions, 'add_units');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen]   = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const { filteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
   const defaultUnitFormValues: AddManufacturedUnitFormData = {
@@ -2045,9 +2153,9 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   };
 
   const statusBadge = (s: ManufacturedUnit['status']) => {
-    if (s === 'Ready')      return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
+    if (s === 'Ready') return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
     if (s === 'Registered') return <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>;
-    return                         <Badge className="bg-muted text-muted-foreground">{s}</Badge>;
+    return <Badge className="bg-muted text-muted-foreground">{s}</Badge>;
   };
 
   return (
@@ -2198,7 +2306,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                   ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
                   : isSubmitting
                     ? <><Loader2 size={14} className="mr-2 animate-spin" /> Saving...</>
-                  : <><Factory size={16} className="mr-2" /> Add Unit</>}
+                    : <><Factory size={16} className="mr-2" /> Add Unit</>}
               </Button>
             </DialogFooter>
           </form>
