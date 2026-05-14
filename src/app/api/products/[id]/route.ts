@@ -85,6 +85,30 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       await batch.commit();
     }
 
+    // ── Cleanup removed Cloudinary images ────────────────────────────────────
+    const existingDoc = await adminDb.collection('products').doc(id).get();
+    if (existingDoc.exists) {
+      const oldData = existingDoc.data() as FirestoreProduct;
+      const oldPublicIds = (oldData.galleryImages ?? []).map(g => g.publicId).filter(Boolean);
+      const newPublicIds = (body.galleryImages ?? []).map((g: any) => g.publicId).filter(Boolean);
+      const removedIds = oldPublicIds.filter(pid => !newPublicIds.includes(pid));
+
+      if (removedIds.length > 0) {
+        try {
+          const cloudinary = (await import('@/lib/cloudinary')).default;
+          await Promise.all(
+            removedIds.map(publicId =>
+              cloudinary.uploader.destroy(publicId).catch(err =>
+                console.warn(`[API] Cloudinary cleanup failed for ${publicId}:`, err)
+              )
+            )
+          );
+        } catch (cErr) {
+          console.warn('[API] Failed to initialize Cloudinary for cleanup:', cErr);
+        }
+      }
+    }
+
     const firestoreData = adminToFirestore(body as AdminProduct);
     await adminDb
       .collection('products')

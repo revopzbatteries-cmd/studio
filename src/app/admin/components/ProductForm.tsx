@@ -146,6 +146,7 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
 
   const setField = useCallback(<K extends keyof AdminProduct>(key: K, value: AdminProduct[K]) => {
     setData(prev => ({ ...prev, [key]: value }));
@@ -178,7 +179,20 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
       setErrors(validationErrors);
       return;
     }
-    onSave({ ...data });
+    if (isUploadingGallery) return;
+
+    // Set main image fields
+    const mainImg = data.galleryImages?.find(img => img.isMain) || data.galleryImages?.[0];
+    const finalData = { ...data };
+    if (mainImg) {
+      finalData.image = mainImg.url;
+      finalData.imagePublicId = mainImg.publicId;
+    } else {
+      finalData.image = '';
+      finalData.imagePublicId = '';
+    }
+
+    onSave(finalData);
   };
 
   const isFormValid = Object.keys(validate(data)).length === 0;
@@ -314,6 +328,7 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
           <GalleryUploader
             images={data.galleryImages || []}
             onChange={imgs => setField('galleryImages', imgs)}
+            onUploadingChange={setIsUploadingGallery}
           />
         </FormSection>
 
@@ -443,12 +458,14 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={(submitted && !isFormValid) || isSaving}
+              disabled={(submitted && !isFormValid) || isSaving || isUploadingGallery}
               className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed min-w-[130px]"
             >
               <Zap size={15} className="mr-2" />
               {isSaving
                 ? 'Saving…'
+                : isUploadingGallery
+                ? 'Uploading images…'
                 : initialData
                 ? 'Update Product'
                 : 'Save Product'}

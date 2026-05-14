@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { Upload, X, Star, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { ProductGalleryImage } from '../types';
@@ -29,27 +29,39 @@ type UploadingEntry = {
 interface GalleryUploaderProps {
   images: ProductGalleryImage[];
   onChange: (images: ProductGalleryImage[]) => void;
+  onUploadingChange?: (isUploading: boolean) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function GalleryUploader({ images, onChange }: GalleryUploaderProps) {
+export function GalleryUploader({ images, onChange, onUploadingChange }: GalleryUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<UploadingEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
+
+  const imagesRef = useRef(images);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
 
   const totalSlots = images.length + uploading.length;
   const remaining = MAX_IMAGES - totalSlots;
   const canUploadMore = remaining > 0;
 
+  useEffect(() => {
+    if (onUploadingChange) {
+      onUploadingChange(uploading.some(u => u.progress === 'uploading'));
+    }
+  }, [uploading, onUploadingChange]);
+
   // ── Upload logic ─────────────────────────────────────────────────────────
 
   const uploadFiles = useCallback(
-    async (files: File[], currentImages: ProductGalleryImage[]) => {
+    async (files: File[]) => {
       const valid = files.filter(
         f => ALLOWED_TYPES.includes(f.type) && f.size <= MAX_SIZE_MB * 1024 * 1024
       );
-      const toUpload = valid.slice(0, MAX_IMAGES - currentImages.length);
+      const toUpload = valid.slice(0, MAX_IMAGES - imagesRef.current.length);
       if (!toUpload.length) return;
 
       // Immediately show blurred skeleton previews
@@ -59,9 +71,6 @@ export function GalleryUploader({ images, onChange }: GalleryUploaderProps) {
         progress: 'uploading' as const,
       }));
       setUploading(prev => [...prev, ...entries]);
-
-      // Confirmed results accumulator (mutable across parallel uploads)
-      let confirmed: ProductGalleryImage[] = [...currentImages];
 
       await Promise.all(
         toUpload.map(async (file, i) => {
@@ -94,18 +103,15 @@ export function GalleryUploader({ images, onChange }: GalleryUploaderProps) {
             URL.revokeObjectURL(entry.previewUrl);
 
             // Add to confirmed and call onChange
-            confirmed = [...confirmed, newImg];
-            // Auto-set first image as main
-            const withMain = confirmed.map((img, idx) => ({
-              ...img,
-              isMain: idx === 0 ? !confirmed.some((x, j) => j < idx && x.isMain) || img.isMain : img.isMain,
-            }));
-            // Simpler: if no main image exists yet, set first as main
-            const hasMain = confirmed.some(x => x.isMain);
+            const currentLatest = imagesRef.current;
+            const updated = [...currentLatest, newImg];
+            
+            const hasMain = updated.some(x => x.isMain);
             const finalList = hasMain
-              ? confirmed
-              : confirmed.map((img, idx) => ({ ...img, isMain: idx === 0 }));
+              ? updated
+              : updated.map((img, idx) => ({ ...img, isMain: idx === 0 }));
 
+            imagesRef.current = finalList;
             onChange(finalList);
           } catch (err: any) {
             setUploading(prev =>
@@ -126,7 +132,7 @@ export function GalleryUploader({ images, onChange }: GalleryUploaderProps) {
 
   const handleFiles = (files: FileList | null) => {
     if (!files || !canUploadMore) return;
-    uploadFiles(Array.from(files), images);
+    uploadFiles(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 

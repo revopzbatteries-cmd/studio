@@ -1278,7 +1278,8 @@ function ProductSection({ permissions }: { permissions: string[] }) {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated.');
 
-      const payload = adminToFirestore(adminProduct);
+      // Send raw AdminProduct — the backend routes handle Firestore conversion
+      const payload = adminProduct;
 
       if (editingProduct) {
         // Update existing
