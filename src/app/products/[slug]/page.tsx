@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import { EnquiryButton } from './EnquiryButton';
 
-export default async function ProductDetailPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const product = await getProductBySlugServer(slug);
 
   if (!product) {

@@ -47,6 +47,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
+import { ProductThumbnail } from './components/ProductThumbnail';
 import { EditProfileModal } from './components/EditProfileModal';
 import type { AdminProduct } from './types';
 import { firestoreToAdmin, adminToFirestore } from './types';
@@ -1450,14 +1451,8 @@ function ProductSection({ permissions }: { permissions: string[] }) {
               ) : (
                 filtered.map(product => (
                   <TableRow key={product.id}>
-                    <TableCell>
-                      <div className="h-12 w-16 rounded-md overflow-hidden bg-muted flex items-center justify-center border">
-                        {product.imageUrl ? (
-                          <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <ImageIcon className="text-muted-foreground/50" size={16} />
-                        )}
-                      </div>
+                    <TableCell className="w-[72px]">
+                      <ProductThumbnail imageUrl={product.imageUrl} name={product.name} />
                     </TableCell>
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell className="capitalize text-muted-foreground">{product.category}</TableCell>
