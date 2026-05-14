@@ -159,12 +159,32 @@ export default function WarrantyPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateReg() || !selectedProduct) return;
 
     setIsRegistering(true);
-    setTimeout(() => {
+    try {
+      const payload = {
+        customerName: regForm.name,
+        customerPhone: regForm.phone,
+        customerEmail: regForm.email,
+        address: regForm.address,
+        serialNumber: selectedProduct.serial,
+        productName: selectedProduct.name,
+        category: selectedProduct.category,
+        model: selectedProduct.model,
+      };
+
+      const res = await fetch('/api/warranty/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Failed to register warranty');
+
       // Compute a 2-year expiry from today for newly registered products
       const today = new Date();
       const expiry = new Date(today);
@@ -184,7 +204,6 @@ export default function WarrantyPage() {
       // Reflect updated product in results immediately
       setSelectedProduct({ ...selectedProduct, warrantyStatus: 'active', purchaseDate, expiryDate });
 
-      setIsRegistering(false);
       setIsRegisterOpen(false);
       setRegForm({ name: '', phone: '', otp: '', email: '', address: '' });
       setRegErrors({});
@@ -193,7 +212,18 @@ export default function WarrantyPage() {
         title: '🎉 Warranty Registered!',
         description: `${selectedProduct.name} is now covered under active warranty.`,
       });
-    }, 1500);
+
+      // Open official slip in new tab
+      window.open(`/warranty/slip/${data.registrationId}`, '_blank');
+    } catch (err: any) {
+      toast({
+        title: 'Registration Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   // ── Raise complaint ────────────────────────────────────────────────────────
