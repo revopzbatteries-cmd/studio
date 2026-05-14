@@ -8,13 +8,23 @@ import { slugify } from '@/lib/utils';
 import { FieldValue } from 'firebase-admin/firestore';
 import { productSchema } from '@/lib/validations';
 
+// Normalize a product name for duplicate detection (trim + lowercase)
+function normalizeName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 export async function GET(request: Request) {
-  // Admin authentication (any admin role)
   const { error } = await requireAdminAuth(request as any, []);
   if (error) return error;
   try {
-    const snapshot = await adminDb.collection('products').orderBy('displayOrder', 'asc').get();
-    const products: FirestoreProduct[] = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as FirestoreProduct));
+    // Sort by newest first
+    const snapshot = await adminDb
+      .collection('products')
+      .orderBy('createdAt', 'desc')
+      .get();
+    const products: FirestoreProduct[] = snapshot.docs.map(
+      doc => ({ id: doc.id, ...doc.data() } as FirestoreProduct)
+    );
     return NextResponse.json({ products });
   } catch (err: any) {
     console.error('[API] GET /api/products failed:', err.message);
@@ -23,41 +33,69 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // Only managers or product_manager can create
-  const { error, adminProfile } = await requireAdminAuth(request as any, ['manager', 'product_manager']);
+  const { error } = await requireAdminAuth(request as any, ['manager', 'product_manager']);
   if (error) return error;
   try {
     const body = await request.json();
-    
-    // Generate initial slug
+
+    // ── Duplicate name check ────────────────────────────────────────────────
+    const normalized = normalizeName(body.name ?? '');
+    if (!normalized) {
+      return NextResponse.json({ error: 'Product name is required.' }, { status: 400 });
+    }
+    const dupSnap = await adminDb
+      .collection('products')
+      .where('normalizedName', '==', normalized)
+      .limit(1)
+      .get();
+    if (!dupSnap.empty) {
+      return NextResponse.json(
+        { error: `A product named "${body.name.trim()}" already exists.` },
+        { status: 409 }
+      );
+    }
+
+    // ── Slug uniqueness ─────────────────────────────────────────────────────
     let slug = slugify(body.name);
-    
-    // Check for uniqueness and append suffix if needed
     let finalSlug = slug;
     let counter = 1;
-    let exists = true;
-    while (exists) {
-      const snap = await adminDb.collection('products').where('slug', '==', finalSlug).limit(1).get();
-      if (snap.empty) {
-        exists = false;
-      } else {
-        finalSlug = `${slug}-${counter}`;
-        counter++;
-      }
+    let slugExists = true;
+    while (slugExists) {
+      const snap = await adminDb
+        .collection('products')
+        .where('slug', '==', finalSlug)
+        .limit(1)
+        .get();
+      if (snap.empty) slugExists = false;
+      else { finalSlug = `${slug}-${counter}`; counter++; }
     }
-    
     body.slug = finalSlug;
+    body.normalizedName = normalized;
 
-    // Validate with Zod
+    // ── Zod validation ──────────────────────────────────────────────────────
     const validation = productSchema.safeParse(body);
     if (!validation.success) {
-      return NextResponse.json({ error: 'Validation failed', details: validation.error.format() }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Validation failed', details: validation.error.format() },
+        { status: 400 }
+      );
+    }
+
+    // ── If this product is featured, un-feature all others ──────────────────
+    if (body.isFeatured) {
+      const featuredSnap = await adminDb
+        .collection('products')
+        .where('isFeatured', '==', true)
+        .get();
+      const batch = adminDb.batch();
+      featuredSnap.docs.forEach(d => batch.update(d.ref, { isFeatured: false }));
+      await batch.commit();
     }
 
     const firestoreData = adminToFirestore(body as AdminProduct);
-    
     const dataWithTimestamps = {
       ...firestoreData,
+      normalizedName: normalized,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };

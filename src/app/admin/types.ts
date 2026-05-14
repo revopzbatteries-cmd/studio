@@ -1,5 +1,14 @@
 // Shared types for the Admin Product Management system
 
+// ── Gallery image type ────────────────────────────────────────────────────────
+
+export type ProductGalleryImage = {
+  id: string;        // uuid generated on client
+  url: string;       // Cloudinary secure_url
+  publicId: string;  // Cloudinary public_id (for deletion)
+  isMain: boolean;   // exactly one image in the array should have this true
+};
+
 export type AdminProduct = {
   id: string;
   name: string;
@@ -8,8 +17,11 @@ export type AdminProduct = {
   powerRating: string;
   description: string;       // shortDescription shown on listing cards
   fullDescription: string;   // longer body text shown on detail page
-  image: string;             // Cloudinary URL (stored after upload)
-  imagePublicId: string;     // Cloudinary public_id (for deletion)
+  /** @deprecated Use galleryImages instead. Kept for backward compatibility. */
+  image: string;
+  /** @deprecated Use galleryImages instead. Kept for backward compatibility. */
+  imagePublicId: string;
+  galleryImages: ProductGalleryImage[];
   performance: string[];
   features: string[];
   safety: string[];
@@ -22,6 +34,14 @@ export type AdminProduct = {
   displayOrder: number;
 };
 
+// ── Firestore document shape ──────────────────────────────────────────────────
+
+export type FirestoreGalleryImage = {
+  url: string;
+  publicId: string;
+  isMain: boolean;
+};
+
 // Shape returned by Firestore (used by both admin API and public pages)
 export type FirestoreProduct = {
   id: string;
@@ -31,8 +51,10 @@ export type FirestoreProduct = {
   powerRating: string;
   shortDescription: string;
   description: string;
+  /** Primary image URL — derived from galleryImages[isMain=true].url, kept for backward compat */
   imageUrl: string;
   imagePublicId?: string;
+  galleryImages?: FirestoreGalleryImage[];
   performance: string[];
   features: string[];
   safety: string[];
@@ -51,6 +73,29 @@ export type FirestoreProduct = {
 
 /** Firestore doc → AdminProduct (for admin form pre-fill) */
 export function firestoreToAdmin(doc: FirestoreProduct): AdminProduct {
+  // Rebuild galleryImages from Firestore. If legacy doc has no galleryImages
+  // but has imageUrl, synthesise a single-entry gallery from it.
+  let galleryImages: ProductGalleryImage[] = [];
+
+  if (doc.galleryImages && doc.galleryImages.length > 0) {
+    galleryImages = doc.galleryImages.map((g, i) => ({
+      id: `existing-${i}-${Date.now()}`,
+      url: g.url,
+      publicId: g.publicId ?? '',
+      isMain: g.isMain,
+    }));
+  } else if (doc.imageUrl) {
+    galleryImages = [{
+      id: `legacy-${Date.now()}`,
+      url: doc.imageUrl,
+      publicId: doc.imagePublicId ?? '',
+      isMain: true,
+    }];
+  }
+
+  // Derive the "main" image for backward-compat fields
+  const mainImg = galleryImages.find(g => g.isMain) ?? galleryImages[0];
+
   return {
     id: doc.id,
     name: doc.name,
@@ -59,8 +104,9 @@ export function firestoreToAdmin(doc: FirestoreProduct): AdminProduct {
     powerRating: doc.powerRating,
     description: doc.shortDescription,
     fullDescription: doc.description,
-    image: doc.imageUrl,
-    imagePublicId: doc.imagePublicId ?? '',
+    image: mainImg?.url ?? '',
+    imagePublicId: mainImg?.publicId ?? '',
+    galleryImages,
     performance: doc.performance ?? [],
     features: doc.features ?? [],
     safety: doc.safety ?? [],
@@ -83,6 +129,14 @@ export function adminToFirestore(
     if (key.trim()) specs[key.trim()] = value;
   });
 
+  const gallery = (p.galleryImages || []).map(g => ({
+    url: g.url,
+    publicId: g.publicId,
+    isMain: g.isMain,
+  }));
+
+  const mainImg = gallery.find(g => g.isMain) ?? gallery[0];
+
   return {
     name: p.name.trim(),
     slug: p.slug.trim(),
@@ -90,8 +144,9 @@ export function adminToFirestore(
     powerRating: p.powerRating.trim(),
     shortDescription: p.description.trim(),
     description: p.fullDescription?.trim() ?? '',
-    imageUrl: p.image || '',
-    imagePublicId: p.imagePublicId || '',
+    imageUrl: mainImg?.url || p.image || '',
+    imagePublicId: mainImg?.publicId || p.imagePublicId || '',
+    galleryImages: gallery,
     performance: p.performance || [],
     features: p.features || [],
     safety: p.safety || [],

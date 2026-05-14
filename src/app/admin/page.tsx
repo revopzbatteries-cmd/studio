@@ -35,6 +35,7 @@ import {
   Copy,
   RefreshCcw,
   Globe,
+  Star,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -1245,6 +1246,7 @@ function ProductSection({ permissions }: { permissions: string[] }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<FirestoreProduct | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   // Load products from Firestore on mount
@@ -1310,6 +1312,9 @@ function ProductSection({ permissions }: { permissions: string[] }) {
   };
 
   const handleDelete = async (product: FirestoreProduct) => {
+    setDeletingId(product.id);
+    // Optimistic UI: remove immediately
+    setProducts(prev => prev.filter(p => p.id !== product.id));
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated.');
@@ -1321,10 +1326,13 @@ function ProductSection({ permissions }: { permissions: string[] }) {
         const data = await res.json();
         throw new Error(data.error ?? 'Delete failed.');
       }
-      toast({ title: 'Product Deleted', description: `"${product.name}" has been removed.` });
-      await loadProducts();
+      toast({ title: 'Product Deleted', description: `"${product.name}" has been permanently removed.` });
     } catch (err: any) {
+      // Rollback on failure
+      setProducts(prev => [product, ...prev]);
       toast({ title: 'Delete failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -1344,16 +1352,23 @@ function ProductSection({ permissions }: { permissions: string[] }) {
   };
 
   const toggleFeatured = async (product: FirestoreProduct) => {
+    const newFeatured = !product.isFeatured;
+    // Optimistic UI: enforce single-featured on the client
+    setProducts(prev => prev.map(p => ({
+      ...p,
+      isFeatured: p.id === product.id ? newFeatured : (newFeatured ? false : p.isFeatured),
+    })));
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated.');
       await fetch(`/api/products/${product.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ isFeatured: !product.isFeatured }),
+        body: JSON.stringify({ isFeatured: newFeatured }),
       });
-      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isFeatured: !p.isFeatured } : p));
     } catch (err: any) {
+      // Rollback
+      setProducts(prev => prev.map(p => ({ ...p, isFeatured: p.id === product.id ? product.isFeatured : p.isFeatured })));
       toast({ title: 'Toggle failed', description: err.message, variant: 'destructive' });
     }
   };
@@ -1465,7 +1480,10 @@ function ProductSection({ permissions }: { permissions: string[] }) {
                           {product.isPublished ? 'Published' : 'Draft'}
                         </Badge>
                         {product.isFeatured && (
-                          <Badge className="bg-primary hover:bg-primary/90 text-xs">Featured</Badge>
+                          <Badge className="bg-amber-500 hover:bg-amber-600 text-xs flex items-center gap-1 w-fit">
+                            <Star size={9} />
+                            Featured
+                          </Badge>
                         )}
                       </div>
                     </TableCell>
@@ -1493,20 +1511,39 @@ function ProductSection({ permissions }: { permissions: string[] }) {
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="hover:text-destructive h-7 w-7">
-                                <Trash2 size={15} />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="hover:text-destructive h-7 w-7"
+                                disabled={deletingId === product.id}
+                                title="Delete product"
+                              >
+                                {deletingId === product.id
+                                  ? <Loader2 size={14} className="animate-spin" />
+                                  : <Trash2 size={15} />}
                               </Button>
                             </AlertDialogTrigger>
-                            <AlertDialogContent className="bg-card">
+                            <AlertDialogContent className="bg-card border-destructive/20">
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Product?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This will permanently remove &quot;{product.name}&quot; and its Cloudinary image. This action cannot be undone.
+                                <div className="flex items-center gap-3 mb-1">
+                                  <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                                    <AlertTriangle size={20} className="text-destructive" />
+                                  </div>
+                                  <AlertDialogTitle className="text-lg">Delete Product?</AlertDialogTitle>
+                                </div>
+                                <AlertDialogDescription className="text-sm leading-relaxed">
+                                  This will permanently remove <span className="font-semibold text-foreground">&quot;{product.name}&quot;</span> and all its Cloudinary images. This action <span className="text-destructive font-semibold">cannot be undone</span>.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
-                              <AlertDialogFooter>
+                              <AlertDialogFooter className="mt-2">
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(product)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(product)}
+                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                >
+                                  <Trash2 size={14} className="mr-1.5" />
+                                  Delete Product
+                                </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>

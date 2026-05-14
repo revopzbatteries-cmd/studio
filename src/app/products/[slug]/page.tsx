@@ -1,13 +1,13 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { getProductBySlugServer } from '@/lib/products-server';
 import {
   CheckCircle2, ChevronLeft, ArrowRight, Zap,
-  Shield, Activity, ShieldCheck, Wrench, ImageIcon
+  Shield, Activity, ShieldCheck, Wrench,
 } from 'lucide-react';
 import { EnquiryButton } from './EnquiryButton';
+import { ProductGallery } from './ProductGallery';
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -16,6 +16,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   if (!product) {
     notFound();
   }
+
+  // Build gallery image list — prefer galleryImages, fall back to imageUrl
+  const galleryImages: { url: string; isMain: boolean }[] =
+    product.galleryImages && product.galleryImages.length > 0
+      ? product.galleryImages
+      : product.imageUrl
+        ? [{ url: product.imageUrl, isMain: true }]
+        : [];
 
   const hasPerformance = product.performance && product.performance.length > 0;
   const hasSafety = product.safety && product.safety.length > 0;
@@ -34,19 +42,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         </Button>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          {/* Left: Product Image */}
-          <div className="relative aspect-square lg:h-[600px] rounded-3xl overflow-hidden border bg-card/50 flex items-center justify-center">
-            {product.imageUrl ? (
-              <Image
-                src={product.imageUrl}
-                alt={product.name}
-                fill
-                className="object-cover p-8 md:p-12"
-              />
-            ) : (
-              <ImageIcon size={80} className="text-muted-foreground/20" />
-            )}
-          </div>
+          {/* Left: Product Gallery */}
+          <ProductGallery images={galleryImages} productName={product.name} />
 
           {/* Right: Product Details */}
           <div className="space-y-10">

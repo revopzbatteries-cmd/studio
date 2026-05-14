@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { DynamicListInput } from './DynamicListInput';
 import { SpecInput, Spec } from './SpecInput';
-import { ImageUploader } from './ImageUploader';
+import { GalleryUploader } from './GalleryUploader';
 import type { AdminProduct } from '../types';
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -116,6 +116,7 @@ const EMPTY: AdminProduct = {
   fullDescription: '',
   image: '',
   imagePublicId: '',
+  galleryImages: [],
   performance: [],
   features: [],
   safety: [],
@@ -304,18 +305,15 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
           </div>
         </FormSection>
 
-        {/* ── 3. Product Image ─────────────────────────────────── */}
-        <FormSection icon={<ImageIcon size={14} />} title="Product Image">
-          <ImageUploader
-            value={data.image}
-            onChange={result => {
-              setField('image', result.url);
-              setField('imagePublicId', result.publicId);
-            }}
-            onRemove={() => {
-              setField('image', '');
-              setField('imagePublicId', '');
-            }}
+        {/* ── 3. Product Gallery ─────────────────────────────────── */}
+        <FormSection
+          icon={<ImageIcon size={14} />}
+          title="Product Gallery"
+          subtitle="Upload up to 8 images. Select one as the main image for listing cards."
+        >
+          <GalleryUploader
+            images={data.galleryImages || []}
+            onChange={imgs => setField('galleryImages', imgs)}
           />
         </FormSection>
 
