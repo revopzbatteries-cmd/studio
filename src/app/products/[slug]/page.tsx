@@ -1,32 +1,36 @@
-"use client";
-
-import { use } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { getProductBySlug } from '@/lib/products';
+import { getProductBySlugServer } from '@/lib/products-server';
 import {
   CheckCircle2, ChevronLeft, ArrowRight, Zap,
-  Shield, Activity, ShieldCheck, Wrench
+  Shield, Activity, ShieldCheck, Wrench,
 } from 'lucide-react';
-import { EnquiryModal } from '@/components/EnquiryModal';
-import { useState } from 'react';
+import { EnquiryButton } from './EnquiryButton';
+import { ProductGallery } from './ProductGallery';
 
-export default function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
-  const product = getProductBySlug(slug);
-  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const product = await getProductBySlugServer(slug);
 
   if (!product) {
     notFound();
   }
 
+  // Build gallery image list — prefer galleryImages, fall back to imageUrl
+  const galleryImages: { url: string; isMain: boolean }[] =
+    product.galleryImages && product.galleryImages.length > 0
+      ? product.galleryImages
+      : product.imageUrl
+        ? [{ url: product.imageUrl, isMain: true }]
+        : [];
+
   const hasPerformance = product.performance && product.performance.length > 0;
   const hasSafety = product.safety && product.safety.length > 0;
-  const hasWarranty = product.warranty;
-  const hasInstallation = product.installation;
+  const hasWarranty = !!product.warranty;
+  const hasInstallation = !!product.installation;
   const hasAdditionalInfo = hasWarranty || hasInstallation;
+  const hasSpecs = product.technicalSpecifications && Object.keys(product.technicalSpecifications).length > 0;
 
   return (
     <div className="min-h-screen bg-background py-16">
@@ -38,15 +42,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
         </Button>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          {/* Left: Product Image */}
-          <div className="relative aspect-square lg:h-[600px] rounded-3xl overflow-hidden border bg-card/50">
-            <Image
-              src={product.image}
-              alt={product.name}
-              fill
-              className="object-cover p-8 md:p-12"
-            />
-          </div>
+          {/* Left: Product Gallery */}
+          <ProductGallery images={galleryImages} productName={product.name} />
 
           {/* Right: Product Details */}
           <div className="space-y-10">
@@ -56,7 +53,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               <h1 className="text-4xl md:text-5xl font-bold font-headline">{product.name}</h1>
               <p className="text-xl font-medium text-muted-foreground">{product.powerRating}</p>
               <p className="text-lg text-muted-foreground leading-relaxed pt-2">
-                {product.fullDescription || product.shortDescription}
+                {product.description || product.shortDescription}
               </p>
             </div>
 
@@ -78,13 +75,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               </div>
             )}
 
-            <Button onClick={() => setIsEnquiryOpen(true)} className="w-full sm:w-auto px-12 py-8 text-lg bg-accent hover:bg-accent/90">
-              Enquire Now
-            </Button>
+            <EnquiryButton productName={product.name} />
 
             {/* Key Features & Ideal For */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pt-6 border-t">
-              {product.features.length > 0 && (
+              {product.features && product.features.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-xl font-bold font-headline">Key Features</h3>
                   <ul className="space-y-3">
@@ -97,7 +92,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
                   </ul>
                 </div>
               )}
-              {product.idealFor.length > 0 && (
+              {product.idealFor && product.idealFor.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-xl font-bold font-headline">Ideal For</h3>
                   <ul className="space-y-3">
@@ -135,11 +130,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
             )}
 
             {/* Technical Specifications */}
-            {Object.keys(product.specs).length > 0 && (
+            {hasSpecs && (
               <div className="bg-card p-8 rounded-2xl border">
                 <h3 className="text-xl font-bold font-headline mb-6">Technical Specifications</h3>
                 <div className="grid grid-cols-1 gap-4">
-                  {Object.entries(product.specs).map(([key, value]) => (
+                  {Object.entries(product.technicalSpecifications).map(([key, value]) => (
                     <div key={key} className="flex justify-between py-3 border-b border-border/50 last:border-0">
                       <span className="text-muted-foreground">{key}</span>
                       <span className="font-semibold">{value}</span>
@@ -179,12 +174,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
           </div>
         </div>
       </div>
-
-      <EnquiryModal
-        isOpen={isEnquiryOpen}
-        onClose={() => setIsEnquiryOpen(false)}
-        productName={product.name}
-      />
     </div>
   );
 }
