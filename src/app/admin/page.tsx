@@ -1427,7 +1427,7 @@ function ProductSection({ permissions }: { permissions: string[] }) {
               </DialogDescription>
             </DialogHeader>
           </div>
-          
+
           <ProductForm
             key={editingProduct?.id ?? 'new'}
             initialData={editingProduct ? firestoreToAdmin(editingProduct) : undefined}
@@ -2081,7 +2081,8 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const canMarkFake = hasPermission(permissions, 'mark_fake');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [fakeFilter, setFakeFilter] = useState<'all' | 'genuine' | 'fake'>('all');
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [statusFilter, setStatusFilter] = useState("All Status");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
@@ -2096,12 +2097,23 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
   const { filteredUnits: rawFilteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
 
-  // Apply fake/genuine filter on top of search filter
+  // Apply category and status filters on top of search filter
   const filteredUnits = useMemo(() => {
-    if (fakeFilter === 'fake') return rawFilteredUnits.filter(u => u.isFakeProduct === true);
-    if (fakeFilter === 'genuine') return rawFilteredUnits.filter(u => u.isFakeProduct !== true);
-    return rawFilteredUnits;
-  }, [rawFilteredUnits, fakeFilter]);
+    return rawFilteredUnits.filter((unit) => {
+      const matchesStatus = statusFilter === 'All Status'
+        ? true
+        : statusFilter === 'False Product'
+          ? unit.isFakeProduct === true
+          : unit.status === statusFilter && !unit.isFakeProduct;
+
+      const matchesCategory =
+        categoryFilter === "All Categories"
+          ? true
+          : unit.category === categoryFilter;
+
+      return matchesStatus && matchesCategory;
+    });
+  }, [rawFilteredUnits, statusFilter, categoryFilter]);
   const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
@@ -2311,16 +2323,30 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               className="pl-9 w-48"
             />
           </div>
-          {/* Fake filter */}
-          <Select value={fakeFilter} onValueChange={v => setFakeFilter(v as 'all' | 'genuine' | 'fake')}>
+          {/* Category filter */}
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-36 gap-1">
               <Filter size={14} className="text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="all">All Units</SelectItem>
-              <SelectItem value="genuine">Genuine</SelectItem>
-              <SelectItem value="fake">Fake Products</SelectItem>
+              <SelectItem value="All Categories">All Categories</SelectItem>
+              <SelectItem value="Inverter">Inverter</SelectItem>
+              <SelectItem value="Battery">Battery</SelectItem>
+              <SelectItem value="Solar">Solar</SelectItem>
+            </SelectContent>
+          </Select>
+          {/* Status filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36 gap-1">
+              <Filter size={14} className="text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="All Status">All Status</SelectItem>
+              <SelectItem value="Ready">Ready</SelectItem>
+              <SelectItem value="Registered">Registered</SelectItem>
+              <SelectItem value="False Product">False Product</SelectItem>
             </SelectContent>
           </Select>
           {canAdd && (
@@ -2547,59 +2573,51 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
             ) : filteredUnits.length > 0 ? filteredUnits.map(unit => {
               const isFake = unit.isFakeProduct === true;
               return (
-              <TableRow key={unit.id} className={isFake ? 'bg-red-500/5' : ''}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    {unit.productName}
-                    {isFake && (
-                      <span title={unit.fakeReason || 'Flagged as counterfeit'}>
-                        <ShieldAlert size={14} className="text-red-500" />
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
-                <TableCell className="text-muted-foreground">{unit.category}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
-                <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
-                <TableCell>{unitStatusBadge(unit)}</TableCell>
-                {canMarkFake && (
-                  <TableCell className="text-right">
-                    {isFake ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-green-600 text-green-500 hover:bg-green-600 hover:text-white h-8 text-xs"
-                        onClick={() => openRemoveFakeModal(unit)}
-                      >
-                        <ShieldOff size={13} className="mr-1" /> Remove Fake Flag
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-red-700 text-red-500 hover:bg-red-700 hover:text-white h-8 text-xs"
-                        onClick={() => openFakeModal(unit)}
-                      >
-                        <ShieldAlert size={13} className="mr-1" /> Mark Fake
-                      </Button>
-                    )}
+                <TableRow key={unit.id} className={isFake ? 'bg-red-500/5' : ''}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {unit.productName}
+                      {isFake && (
+                        <span title={unit.fakeReason || 'Flagged as counterfeit'}>
+                          <ShieldAlert size={14} className="text-red-500" />
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
-                )}
-              </TableRow>
-            );
+                  <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
+                  <TableCell className="text-muted-foreground">{unit.category}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
+                  <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
+                  <TableCell>{unitStatusBadge(unit)}</TableCell>
+                  {canMarkFake && (
+                    <TableCell className="text-right">
+                      {isFake ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-green-600 text-green-500 hover:bg-green-600 hover:text-white h-8 text-xs"
+                          onClick={() => openRemoveFakeModal(unit)}
+                        >
+                          <ShieldOff size={13} className="mr-1" /> Remove Fake Flag
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-700 text-red-500 hover:bg-red-700 hover:text-white h-8 text-xs"
+                          onClick={() => openFakeModal(unit)}
+                        >
+                          <ShieldAlert size={13} className="mr-1" /> Mark Fake
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
             }) : (
               <TableRow>
                 <TableCell colSpan={canMarkFake ? 7 : 6} className="h-32 text-center text-muted-foreground">
-                  {fakeFilter === 'fake'
-                    ? 'No counterfeit units found.'
-                    : fakeFilter === 'genuine'
-                    ? 'No genuine units found.'
-                    : searchTerm
-                    ? `No units found matching "${searchTerm}".`
-                    : canAdd
-                      ? 'No manufactured units yet. Click "Add Unit" to get started.'
-                      : 'No manufactured units have been recorded yet.'}
+                  No manufactured units found.
                 </TableCell>
               </TableRow>
             )}
