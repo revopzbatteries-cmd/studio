@@ -38,3 +38,54 @@ export const INITIAL_WARRANTIES: WarrantyEntry[] = [
     claimMessage: 'The battery backup has significantly dropped after 1 year of usage.'
   }
 ];
+
+import { useEffect, useState } from 'react';
+import { collection, query, orderBy, onSnapshot, FirestoreError, QueryDocumentSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+function mapWarrantyDoc(docSnapshot: QueryDocumentSnapshot): WarrantyEntry {
+  const data = docSnapshot.data();
+  return {
+    id: docSnapshot.id,
+    serialNumber: data.serialNumber || '',
+    productName: data.productName || '',
+    customerName: data.customerName || '',
+    phone: data.customerPhone || data.phone || '',
+    email: data.customerEmail || data.email || '',
+    purchaseDate: data.installationDate || data.warrantyStartDate || '',
+    expiryDate: data.warrantyEndDate || '',
+    status: data.status || 'Active',
+    claimMessage: data.claimMessage || '',
+  };
+}
+
+export function useWarranties() {
+  const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsLoading(true);
+    const q = query(collection(db, 'warranties'), orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const mapped = snapshot.docs.map(mapWarrantyDoc);
+        setWarranties(mapped);
+        console.log("[Warranty Management] Loaded warranties:", mapped.length);
+        setIsLoading(false);
+        setError(null);
+      },
+      (err: FirestoreError) => {
+        console.error("Error fetching warranties:", err);
+        setError(err.message);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  return { warranties, isLoading, error };
+}

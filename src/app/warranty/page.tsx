@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
   Package, User, Phone, Mail, MapPin, Tag, XCircle, ClipboardCheck,
-  ShieldOff, RefreshCw, CalendarDays, Lock
+  ShieldOff, RefreshCw, CalendarDays, Lock, ShieldAlert, AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getManufacturedUnit } from '@/lib/manufacturedUnits';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type WarrantyStatus = 'not_registered' | 'active' | 'expired';
@@ -64,6 +66,7 @@ const chipColors: Record<WarrantyStatus, string> = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WarrantyPage() {
+  const router = useRouter();
   const { toast } = useToast();
 
   // ── Mock product data ──────────────────────────────────────────────────────
@@ -101,6 +104,8 @@ export default function WarrantyPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isFakeProduct, setIsFakeProduct] = useState(false);
+  const [fakeReason, setFakeReason] = useState('');
 
   // register modal
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -128,18 +133,50 @@ export default function WarrantyPage() {
   };
 
   // ── Core search logic ──────────────────────────────────────────────────────
-  const triggerSearch = (serial: string) => {
+  const triggerSearch = async (serial: string) => {
     if (!serial.trim()) return;
     setIsSearching(true);
     setHasSearched(false);
     setSelectedProduct(null);
+    setIsFakeProduct(false);
+    setFakeReason('');
 
-    setTimeout(() => {
-      const found = products.find(p => p.serial.toLowerCase() === serial.trim().toLowerCase());
-      setSelectedProduct(found ?? null);
+    try {
+      const res = await fetch(`/api/warranty/search?serial=${encodeURIComponent(serial)}`, { cache: 'no-store' });
+      const data = await res.json();
+
+      if (!data.found) {
+        setSelectedProduct(null);
+      } else if (data.status === 'fake_product') {
+        setIsFakeProduct(true);
+        setFakeReason(data.reason || '');
+        setSelectedProduct(null);
+      } else if (data.source === 'manufactured_unit') {
+        setSelectedProduct({
+          serial: data.data.productNumber,
+          name: data.data.productName,
+          model: data.data.productName, // model defaults to productName if not separate
+          category: data.data.category,
+          warrantyStatus: 'not_registered',
+        });
+      } else if (data.source === 'warranty') {
+        setSelectedProduct({
+          serial: data.data.serialNumber,
+          name: data.data.productName,
+          model: data.data.model || data.data.productName,
+          category: data.data.category,
+          warrantyStatus: data.status, // 'active' | 'expired'
+          purchaseDate: data.data.installationDate,
+          expiryDate: data.data.warrantyEndDate,
+        });
+      }
+    } catch (err) {
+      console.error('[Warranty] Search failed:', err);
+      setSelectedProduct(null);
+    } finally {
       setIsSearching(false);
       setHasSearched(true);
-    }, 600);
+    }
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -185,24 +222,15 @@ export default function WarrantyPage() {
 
       if (!res.ok) throw new Error(data.error || 'Failed to register warranty');
 
-      // Compute a 2-year expiry from today for newly registered products
-      const today = new Date();
-      const expiry = new Date(today);
-      expiry.setFullYear(expiry.getFullYear() + 2);
-      const purchaseDate = today.toISOString().split('T')[0];
-      const expiryDate = expiry.toISOString().split('T')[0];
-
-      // Update state
-      setProducts(prev =>
-        prev.map(p =>
-          p.serial === selectedProduct.serial
-            ? { ...p, warrantyStatus: 'active', purchaseDate, expiryDate }
-            : p
-        )
-      );
-
-      // Reflect updated product in results immediately
-      setSelectedProduct({ ...selectedProduct, warrantyStatus: 'active', purchaseDate, expiryDate });
+      // Compute a 2-year expiry from today for newly registered products (or rely on backend if we refetch)
+      // Since backend already computed it, we can just do a local update or refetch. 
+      console.log("[Warranty Registration] Saving warranty:", selectedProduct.serial);
+      console.log("[Warranty Registration] Updating manufactured unit");
+      
+      // For immediate UI feedback, we just do a refetch of the search API.
+      await triggerSearch(selectedProduct.serial);
+      
+      router.refresh();
 
       setIsRegisterOpen(false);
       setRegForm({ name: '', phone: '', otp: '', email: '', address: '' });
@@ -312,8 +340,71 @@ export default function WarrantyPage() {
         {hasSearched && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
 
+            {/* FAKE PRODUCT WARNING */}
+            {isFakeProduct && (
+              <div className="rounded-3xl overflow-hidden border-2 border-red-700/60 bg-red-950/30">
+                <div className="bg-red-700/20 border-b border-red-700/30 px-8 py-5 flex items-center gap-4">
+                  <div className="h-14 w-14 rounded-full bg-red-700/30 flex items-center justify-center shrink-0">
+                    <ShieldAlert size={28} className="text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-red-400/80 mb-0.5">Security Alert</p>
+                    <h3 className="text-2xl font-bold font-headline text-red-300">Counterfeit Product Detected</h3>
+                  </div>
+                </div>
+                <div className="px-8 py-7 space-y-6">
+                  <p className="text-muted-foreground leading-relaxed">
+                    This serial number{' '}
+                    <span className="font-mono font-bold text-red-300 bg-red-900/30 px-2 py-0.5 rounded">
+                      {inputValue.trim().toUpperCase()}
+                    </span>{' '}
+                    has been flagged as a <span className="text-red-400 font-semibold">non-genuine REVOPZ product</span>.
+                    Warranty and support services are <strong>unavailable</strong> for counterfeit products.
+                  </p>
+                  {fakeReason && (
+                    <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 space-y-1">
+                      <p className="text-xs font-bold uppercase tracking-wider text-red-400/80 flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> Flagged Reason
+                      </p>
+                      <p className="text-sm text-red-200/80 italic">&ldquo;{fakeReason}&rdquo;</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div className="p-4 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Serial Number</p>
+                      <p className="font-mono font-bold text-red-300">{inputValue.trim().toUpperCase()}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Warranty Status</p>
+                      <p className="font-semibold text-red-400 flex items-center gap-1.5">
+                        <ShieldAlert size={14} /> Not Applicable — Counterfeit
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 text-sm space-y-2">
+                    <p className="font-semibold text-red-300/90 flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> What should you do?
+                    </p>
+                    <p className="text-muted-foreground">
+                      If you purchased this product from an authorised dealer, please contact REVOPZ customer care immediately.
+                      Do not use this product — counterfeit electronics may pose safety risks.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                    <Button className="bg-red-700 hover:bg-red-600 text-white flex-1" onClick={handleContactSupport}>
+                      <Phone size={16} className="mr-2" /> Contact Support
+                    </Button>
+                    <Button variant="outline" className="border-border flex-1"
+                      onClick={() => { setHasSearched(false); setInputValue(''); setIsFakeProduct(false); setFakeReason(''); }}>
+                      <RefreshCw size={16} className="mr-2" /> Search Again
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* NOT FOUND */}
-            {!selectedProduct && (
+            {!isFakeProduct && !selectedProduct && (
               <div className="p-12 text-center bg-destructive/10 border border-destructive/20 rounded-3xl space-y-4">
                 <AlertCircle size={48} className="text-destructive mx-auto" />
                 <h3 className="text-2xl font-bold font-headline">Product Not Found</h3>
