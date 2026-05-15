@@ -16,6 +16,7 @@ export type Permission =
   | 'manage_units'   // view the units module (sidebar access)
   | 'add_units'      // can add new manufactured units
   | 'delete_units'   // can delete manufactured units
+  | 'mark_fake'      // can mark/unmark units as counterfeit
   | 'view_warranty'
   | 'manage_careers';
 
@@ -31,6 +32,7 @@ export const ROLE_PERMISSIONS: Record<FirestoreRole, Permission[]> = {
     'manage_units',
     'add_units',
     'delete_units',
+    'mark_fake',
     'view_warranty',
     'manage_careers',
   ],
@@ -39,10 +41,11 @@ export const ROLE_PERMISSIONS: Record<FirestoreRole, Permission[]> = {
     'manage_units',
     'add_units',
     'delete_units',
+    'mark_fake',
     'view_warranty',
     'manage_careers',
   ],
-  // production_unit: can view + add units ONLY. No delete, no other modules.
+  // production_unit: can view + add units ONLY. No delete, no fake flagging.
   production_unit: ['manage_units', 'add_units'],
 };
 

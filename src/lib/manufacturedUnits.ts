@@ -9,6 +9,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   where,
   type FirestoreError,
   type QueryDocumentSnapshot,
@@ -37,6 +38,11 @@ export interface ManufacturedUnit {
   createdBy: string;
   createdByName: string;
   createdByRole: FirestoreRole;
+  // ── Fake Product Detection ──────────────────────────────────────────────────
+  isFakeProduct: boolean;
+  fakeMarkedAt: Timestamp | null;
+  fakeMarkedBy: string | null;
+  fakeReason: string;
 }
 
 export interface CreateManufacturedUnitInput extends AddManufacturedUnitFormData {
@@ -60,6 +66,11 @@ function mapManufacturedUnitDoc(docSnapshot: QueryDocumentSnapshot): Manufacture
     createdBy: data.createdBy ?? '',
     createdByName: data.createdByName ?? '',
     createdByRole: data.createdByRole,
+    // Fake detection fields — default to safe values for legacy docs
+    isFakeProduct: data.isFakeProduct === true,
+    fakeMarkedAt: data.fakeMarkedAt ?? null,
+    fakeMarkedBy: data.fakeMarkedBy ?? null,
+    fakeReason: data.fakeReason ?? '',
   };
 }
 
@@ -99,6 +110,19 @@ export async function manufacturedUnitNumberExists(productNumber: string): Promi
   return !snapshot.empty;
 }
 
+/**
+ * Fetches a single manufactured unit by its product number (Firestore doc ID).
+ * Returns null if not found.
+ */
+export async function getManufacturedUnit(productNumber: string): Promise<ManufacturedUnit | null> {
+  const normalized = normalizeProductNumber(productNumber);
+  const snapshot = await getDoc(getUnitRef(normalized));
+
+  if (!snapshot.exists()) return null;
+
+  return mapManufacturedUnitDoc(snapshot as QueryDocumentSnapshot);
+}
+
 export async function addManufacturedUnit(
   input: CreateManufacturedUnitInput
 ): Promise<string> {
@@ -106,7 +130,7 @@ export async function addManufacturedUnit(
   const duplicateExists = await manufacturedUnitNumberExists(productNumber);
 
   if (duplicateExists) {
-    throw new Error('Product number already exists.');
+    throw new Error('This product serial number already exists.');
   }
 
   await runTransaction(db, async transaction => {
@@ -114,7 +138,7 @@ export async function addManufacturedUnit(
     const unitSnapshot = await transaction.get(unitRef);
 
     if (unitSnapshot.exists()) {
-      throw new Error('Product number already exists.');
+      throw new Error('This product serial number already exists.');
     }
 
     transaction.set(unitRef, {
@@ -125,12 +149,53 @@ export async function addManufacturedUnit(
       manufacturedDate: input.manufacturedDate,
       warrantyMonths: input.warrantyMonths,
       status: input.status,
+      warrantyStatus: 'not_registered',
+      // Fake detection — always false on creation
+      isFakeProduct: false,
+      fakeMarkedAt: null,
+      fakeMarkedBy: null,
+      fakeReason: '',
       createdBy: input.createdBy,
       createdByName: input.createdByName.trim(),
       createdByRole: input.createdByRole,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   });
 
   return productNumber;
+}
+
+/**
+ * Marks a manufactured unit as a fake / counterfeit product.
+ * Only managers and product managers should call this.
+ */
+export async function markUnitAsFake(
+  productNumber: string,
+  fakeReason: string,
+  markedBy: string
+): Promise<void> {
+  const unitRef = getUnitRef(productNumber);
+  await updateDoc(unitRef, {
+    isFakeProduct: true,
+    fakeMarkedAt: serverTimestamp(),
+    fakeMarkedBy: markedBy,
+    fakeReason: fakeReason.trim(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Removes the fake flag from a manufactured unit, restoring it as genuine.
+ * Only managers and product managers should call this.
+ */
+export async function removeUnitFakeFlag(productNumber: string): Promise<void> {
+  const unitRef = getUnitRef(productNumber);
+  await updateDoc(unitRef, {
+    isFakeProduct: false,
+    fakeMarkedAt: null,
+    fakeMarkedBy: null,
+    fakeReason: '',
+    updatedAt: serverTimestamp(),
+  });
 }

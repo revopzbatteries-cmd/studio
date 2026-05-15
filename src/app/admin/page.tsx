@@ -11,6 +11,8 @@ import {
   LayoutDashboard,
   Package,
   ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
   UserCircle,
   Users,
   Plus,
@@ -36,13 +38,14 @@ import {
   RefreshCcw,
   Globe,
   Star,
+  Filter,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import type { FirestoreProduct } from './types';
 import { Job, INITIAL_JOBS, JobType } from '@/lib/jobs';
 import { JobApplication, INITIAL_APPLICATIONS, ApplicationStatus } from '@/lib/applications';
-import { WarrantyEntry, INITIAL_WARRANTIES, WarrantyStatus } from '@/lib/warranty';
+import { useWarranties, WarrantyEntry, WarrantyStatus } from '@/lib/warranty';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -67,6 +70,8 @@ import { useAppUsers } from '@/hooks/useAppUsers';
 import {
   addManufacturedUnit,
   manufacturedUnitNumberExists,
+  markUnitAsFake,
+  removeUnitFakeFlag,
   type ManufacturedUnit,
   type ManufacturedUnitCategory,
 } from '@/lib/manufacturedUnits';
@@ -113,7 +118,7 @@ export default function AdminPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   // products are managed internally by ProductSection (self-fetching)
 
-  const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
+  const { warranties } = useWarranties();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
 
@@ -125,8 +130,7 @@ export default function AdminPage() {
     const savedApps = localStorage.getItem('revopz_applications');
     if (savedApps) { setApplications(JSON.parse(savedApps)); } else { setApplications(INITIAL_APPLICATIONS); localStorage.setItem('revopz_applications', JSON.stringify(INITIAL_APPLICATIONS)); }
 
-    const savedWarranties = localStorage.getItem('revopz_warranties');
-    if (savedWarranties) { setWarranties(JSON.parse(savedWarranties)); } else { setWarranties(INITIAL_WARRANTIES); localStorage.setItem('revopz_warranties', JSON.stringify(INITIAL_WARRANTIES)); }
+    // Warranties now loaded from Firestore hook
   }, []);
 
   // Seed local admin list from Firestore profile once loaded
@@ -138,7 +142,6 @@ export default function AdminPage() {
 
   const handleUpdateJobs = (newJobs: Job[]) => { setJobs(newJobs); localStorage.setItem('revopz_jobs', JSON.stringify(newJobs)); };
   const handleUpdateApps = (newApps: JobApplication[]) => { setApplications(newApps); localStorage.setItem('revopz_applications', JSON.stringify(newApps)); };
-  const handleUpdateWarranties = (newWarranties: WarrantyEntry[]) => { setWarranties(newWarranties); localStorage.setItem('revopz_warranties', JSON.stringify(newWarranties)); };
 
   const onLoginSubmit = async (data: LoginFormData) => {
     try {
@@ -366,7 +369,7 @@ export default function AdminPage() {
             {resolvedTab === 'products' && <ProductSection permissions={permissions} />}
             {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
-            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} setWarranties={handleUpdateWarranties} permissions={permissions} />}
+            {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} permissions={permissions} />}
             {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
             {resolvedTab === 'applications' && <ApplicationsSection applications={applications} setApplications={handleUpdateApps} permissions={permissions} />}
           </div>
@@ -1562,7 +1565,7 @@ function ProductSection({ permissions }: { permissions: string[] }) {
   );
 }
 
-function WarrantyManagementSection({ warranties, setWarranties, permissions }: { warranties: WarrantyEntry[], setWarranties: (w: WarrantyEntry[]) => void, permissions: string[] }) {
+function WarrantyManagementSection({ warranties, permissions }: { warranties: WarrantyEntry[], permissions: string[] }) {
   const { toast } = useToast();
   const [selectedWarranty, setSelectedWarranty] = useState<WarrantyEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1646,11 +1649,21 @@ function WarrantyManagementSection({ warranties, setWarranties, permissions }: {
                           {selectedWarranty && (
                             <div className="space-y-6 py-4">
                               <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
-                                  <p className="font-bold">{selectedWarranty.customerName}</p>
-                                  <p>{selectedWarranty.phone}</p>
-                                  <p className="text-xs">{selectedWarranty.email}</p>
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
+                                    <p className="font-bold">{selectedWarranty.customerName}</p>
+                                    <p>{selectedWarranty.phone}</p>
+                                    <p className="text-xs">{selectedWarranty.email}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                                      Address
+                                    </p>
+                                    <p className="text-sm text-zinc-100 break-words">
+                                      {selectedWarranty.address || "Address not available"}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div>
                                   <Label className="text-xs text-muted-foreground uppercase">Dates</Label>
@@ -2065,10 +2078,30 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const { toast } = useToast();
 
   const canAdd = hasPermission(permissions, 'add_units');
+  const canMarkFake = hasPermission(permissions, 'mark_fake');
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [fakeFilter, setFakeFilter] = useState<'all' | 'genuine' | 'fake'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
-  const { filteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
+
+  // ── Fake Product Modal state ──────────────────────────────────────────────
+  const [fakeModalOpen, setFakeModalOpen] = useState(false);
+  const [fakeTargetUnit, setFakeTargetUnit] = useState<ManufacturedUnit | null>(null);
+  const [fakeReason, setFakeReason] = useState('');
+  const [isMarkingFake, setIsMarkingFake] = useState(false);
+  const [removeFakeModalOpen, setRemoveFakeModalOpen] = useState(false);
+  const [removeFakeTarget, setRemoveFakeTarget] = useState<ManufacturedUnit | null>(null);
+  const [isRemovingFake, setIsRemovingFake] = useState(false);
+
+  const { filteredUnits: rawFilteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
+
+  // Apply fake/genuine filter on top of search filter
+  const filteredUnits = useMemo(() => {
+    if (fakeFilter === 'fake') return rawFilteredUnits.filter(u => u.isFakeProduct === true);
+    if (fakeFilter === 'genuine') return rawFilteredUnits.filter(u => u.isFakeProduct !== true);
+    return rawFilteredUnits;
+  }, [rawFilteredUnits, fakeFilter]);
   const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
@@ -2115,6 +2148,58 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
     setIsDialogOpen(false);
   };
 
+  // ── Mark Fake handler ─────────────────────────────────────────────────────
+  const openFakeModal = (unit: ManufacturedUnit) => {
+    setFakeTargetUnit(unit);
+    setFakeReason('');
+    setFakeModalOpen(true);
+  };
+
+  const handleMarkFake = async () => {
+    if (!fakeTargetUnit || !canMarkFake) return;
+    setIsMarkingFake(true);
+    try {
+      await markUnitAsFake(
+        fakeTargetUnit.productNumber,
+        fakeReason,
+        adminProfile.name || adminProfile.uid
+      );
+      setFakeModalOpen(false);
+      toast({
+        title: 'Unit flagged as counterfeit.',
+        description: `${fakeTargetUnit.productNumber} has been marked as a fake product.`,
+        variant: 'destructive',
+      });
+    } catch (err: any) {
+      toast({ title: 'Failed to mark unit', description: err?.message, variant: 'destructive' });
+    } finally {
+      setIsMarkingFake(false);
+    }
+  };
+
+  // ── Remove Fake Flag handler ───────────────────────────────────────────────
+  const openRemoveFakeModal = (unit: ManufacturedUnit) => {
+    setRemoveFakeTarget(unit);
+    setRemoveFakeModalOpen(true);
+  };
+
+  const handleRemoveFakeFlag = async () => {
+    if (!removeFakeTarget || !canMarkFake) return;
+    setIsRemovingFake(true);
+    try {
+      await removeUnitFakeFlag(removeFakeTarget.productNumber);
+      setRemoveFakeModalOpen(false);
+      toast({
+        title: 'Fake flag removed.',
+        description: `${removeFakeTarget.productNumber} is now marked as genuine.`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Failed to remove flag', description: err?.message, variant: 'destructive' });
+    } finally {
+      setIsRemovingFake(false);
+    }
+  };
+
   const onAddUnitSubmit = async (data: AddManufacturedUnitFormData) => {
     if (!canAdd) {
       toast({
@@ -2134,10 +2219,10 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       if (exists) {
         setUnitError('productNumber', {
           type: 'manual',
-          message: 'This product number already exists.',
+          message: 'This product serial number already exists.',
         });
         toast({
-          title: 'Product number already exists.',
+          title: 'This product serial number already exists.',
           variant: 'destructive',
         });
         return;
@@ -2158,7 +2243,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       setIsDialogOpen(false);
       resetUnitForm(defaultUnitFormValues);
       toast({
-        title: 'Unit Added',
+        title: 'Manufactured unit added successfully.',
         description: `${data.productName.trim()} (${productNumber}) has been recorded.`,
       });
     } catch (error: any) {
@@ -2167,8 +2252,12 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         setUnitError('productNumber', { type: 'manual', message });
       }
       toast({
-        title: message === 'Product number already exists.' ? message : 'Add failed',
-        description: message === 'Product number already exists.' ? undefined : message,
+        title: message.toLowerCase().includes('serial number') || message.toLowerCase().includes('product number')
+          ? message
+          : 'Add failed',
+        description: message.toLowerCase().includes('serial number') || message.toLowerCase().includes('product number')
+          ? undefined
+          : message,
         variant: 'destructive',
       });
     } finally {
@@ -2185,10 +2274,17 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
     return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const statusBadge = (s: ManufacturedUnit['status']) => {
-    if (s === 'Ready') return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
-    if (s === 'Registered') return <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>;
-    return <Badge className="bg-muted text-muted-foreground">{s}</Badge>;
+  const unitStatusBadge = (unit: ManufacturedUnit) => {
+    const isFake = unit.isFakeProduct === true;
+    if (isFake)
+      return (
+        <Badge className="bg-red-700 hover:bg-red-800 text-white flex items-center gap-1">
+          <ShieldAlert size={11} /> FAKE
+        </Badge>
+      );
+    if (unit.status === 'Ready') return <Badge className="bg-blue-600 hover:bg-blue-700">Ready</Badge>;
+    if (unit.status === 'Registered') return <Badge className="bg-green-600 hover:bg-green-700">Registered</Badge>;
+    return <Badge className="bg-muted text-muted-foreground">{unit.status}</Badge>;
   };
 
   return (
@@ -2205,15 +2301,28 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
           </CardDescription>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
               placeholder="Search by name or number…"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9 w-56"
+              className="pl-9 w-48"
             />
           </div>
+          {/* Fake filter */}
+          <Select value={fakeFilter} onValueChange={v => setFakeFilter(v as 'all' | 'genuine' | 'fake')}>
+            <SelectTrigger className="w-36 gap-1">
+              <Filter size={14} className="text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Units</SelectItem>
+              <SelectItem value="genuine">Genuine</SelectItem>
+              <SelectItem value="fake">Fake Products</SelectItem>
+            </SelectContent>
+          </Select>
           {canAdd && (
             <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
               <Plus size={16} className="mr-2" /> Add Unit
@@ -2235,8 +2344,6 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
           </DialogHeader>
 
           <form onSubmit={handleUnitSubmit(onAddUnitSubmit)} className="space-y-4 py-2">
-
-            {/* Product Name */}
             <div className="space-y-1">
               <Label htmlFor="unit-product-name">Product Name <span className="text-destructive">*</span></Label>
               <Input
@@ -2250,7 +2357,6 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               )}
             </div>
 
-            {/* Product Number */}
             <div className="space-y-1">
               <Label htmlFor="unit-number">Product Number (Serial Number) <span className="text-destructive">*</span></Label>
               <div className="relative">
@@ -2277,7 +2383,6 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               }
             </div>
 
-            {/* Category */}
             <div className="space-y-1">
               <Label>Category <span className="text-destructive">*</span></Label>
               <Select value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
@@ -2293,11 +2398,8 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               )}
             </div>
 
-            {/* Manufactured Date */}
             <div className="space-y-1">
-              <Label htmlFor="unit-date">
-                Manufactured Date <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="unit-date">Manufactured Date <span className="text-destructive">*</span></Label>
               <Input
                 id="unit-date"
                 type="date"
@@ -2310,7 +2412,6 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               )}
             </div>
 
-            {/* Warranty */}
             <div className="space-y-1">
               <Label htmlFor="unit-warranty">Warranty (Months) <span className="text-destructive">*</span></Label>
               <Input
@@ -2346,7 +2447,77 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         </DialogContent>
       </Dialog>
 
-      {/* ── Table ─────────────────────────────────────────────────────────────── */}
+      {/* ── Mark Fake Confirmation Modal ─────────────────────────────────────── */}
+      <Dialog open={fakeModalOpen} onOpenChange={open => { if (!open) { setFakeModalOpen(false); setFakeReason(''); } }}>
+        <DialogContent className="bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-headline flex items-center gap-2 text-red-500">
+              <ShieldAlert size={20} /> Mark as Counterfeit
+            </DialogTitle>
+            <DialogDescription>
+              You are flagging{' '}
+              <span className="font-mono font-bold text-foreground">{fakeTargetUnit?.productNumber}</span>{' '}
+              as a fake/counterfeit product. This will immediately show a warning to any customer who searches this serial number.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/25 text-sm text-red-400">
+              <AlertTriangle size={14} className="inline mr-1" />
+              This action is reversible — you can remove the flag at any time.
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="fake-reason">Reason for marking as fake <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Textarea
+                id="fake-reason"
+                placeholder="e.g. Packaging mismatch, invalid circuit board, reported by service center..."
+                value={fakeReason}
+                onChange={e => setFakeReason(e.target.value)}
+                className="min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setFakeModalOpen(false); setFakeReason(''); }} disabled={isMarkingFake}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleMarkFake}
+              disabled={isMarkingFake}
+              className="bg-red-700 hover:bg-red-800 text-white"
+            >
+              {isMarkingFake ? <><Loader2 size={14} className="mr-2 animate-spin" /> Marking...</> : <><ShieldAlert size={14} className="mr-2" /> Confirm: Mark Fake</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Remove Fake Flag Confirmation Modal ──────────────────────────────── */}
+      <AlertDialog open={removeFakeModalOpen} onOpenChange={setRemoveFakeModalOpen}>
+        <AlertDialogContent className="bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldOff size={18} className="text-green-500" /> Remove Fake Flag
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove the counterfeit flag from{' '}
+              <span className="font-mono font-bold text-foreground">{removeFakeTarget?.productNumber}</span>?{' '}
+              It will be restored as a genuine product and customers will see normal warranty info.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingFake}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveFakeFlag}
+              disabled={isRemovingFake}
+              className="bg-green-700 hover:bg-green-800 text-white"
+            >
+              {isRemovingFake ? <><Loader2 size={14} className="mr-2 animate-spin" /> Removing...</> : 'Yes, Remove Flag'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Table ───────────────────────────────────────────────────────────── */}
       <CardContent>
         <Table>
           <TableHeader>
@@ -2357,6 +2528,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               <TableHead>Mfg. Date</TableHead>
               <TableHead className="text-center">Warranty (Mo.)</TableHead>
               <TableHead>Status</TableHead>
+              {canMarkFake && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -2369,21 +2541,61 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell className="text-center"><Skeleton className="mx-auto h-4 w-12" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                  {canMarkFake && <TableCell><Skeleton className="h-8 w-28 ml-auto" /></TableCell>}
                 </TableRow>
               ))
-            ) : filteredUnits.length > 0 ? filteredUnits.map(unit => (
-              <TableRow key={unit.id}>
-                <TableCell className="font-medium">{unit.productName}</TableCell>
+            ) : filteredUnits.length > 0 ? filteredUnits.map(unit => {
+              const isFake = unit.isFakeProduct === true;
+              return (
+              <TableRow key={unit.id} className={isFake ? 'bg-red-500/5' : ''}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    {unit.productName}
+                    {isFake && (
+                      <span title={unit.fakeReason || 'Flagged as counterfeit'}>
+                        <ShieldAlert size={14} className="text-red-500" />
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
                 <TableCell className="text-muted-foreground">{unit.category}</TableCell>
                 <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
                 <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
-                <TableCell>{statusBadge(unit.status)}</TableCell>
+                <TableCell>{unitStatusBadge(unit)}</TableCell>
+                {canMarkFake && (
+                  <TableCell className="text-right">
+                    {isFake ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-green-600 text-green-500 hover:bg-green-600 hover:text-white h-8 text-xs"
+                        onClick={() => openRemoveFakeModal(unit)}
+                      >
+                        <ShieldOff size={13} className="mr-1" /> Remove Fake Flag
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-700 text-red-500 hover:bg-red-700 hover:text-white h-8 text-xs"
+                        onClick={() => openFakeModal(unit)}
+                      >
+                        <ShieldAlert size={13} className="mr-1" /> Mark Fake
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
-            )) : (
+            );
+            }) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  {searchTerm
+                <TableCell colSpan={canMarkFake ? 7 : 6} className="h-32 text-center text-muted-foreground">
+                  {fakeFilter === 'fake'
+                    ? 'No counterfeit units found.'
+                    : fakeFilter === 'genuine'
+                    ? 'No genuine units found.'
+                    : searchTerm
                     ? `No units found matching "${searchTerm}".`
                     : canAdd
                       ? 'No manufactured units yet. Click "Add Unit" to get started.'
