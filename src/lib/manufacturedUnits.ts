@@ -106,7 +106,7 @@ export async function addManufacturedUnit(
   const duplicateExists = await manufacturedUnitNumberExists(productNumber);
 
   if (duplicateExists) {
-    throw new Error('Product number already exists.');
+    throw new Error('This product serial number already exists.');
   }
 
   await runTransaction(db, async transaction => {
@@ -114,7 +114,7 @@ export async function addManufacturedUnit(
     const unitSnapshot = await transaction.get(unitRef);
 
     if (unitSnapshot.exists()) {
-      throw new Error('Product number already exists.');
+      throw new Error('This product serial number already exists.');
     }
 
     transaction.set(unitRef, {
@@ -125,10 +125,12 @@ export async function addManufacturedUnit(
       manufacturedDate: input.manufacturedDate,
       warrantyMonths: input.warrantyMonths,
       status: input.status,
+      warrantyStatus: 'not_registered',
       createdBy: input.createdBy,
       createdByName: input.createdByName.trim(),
       createdByRole: input.createdByRole,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   });
 

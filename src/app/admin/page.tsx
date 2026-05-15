@@ -2134,10 +2134,10 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       if (exists) {
         setUnitError('productNumber', {
           type: 'manual',
-          message: 'This product number already exists.',
+          message: 'This product serial number already exists.',
         });
         toast({
-          title: 'Product number already exists.',
+          title: 'This product serial number already exists.',
           variant: 'destructive',
         });
         return;
@@ -2158,7 +2158,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       setIsDialogOpen(false);
       resetUnitForm(defaultUnitFormValues);
       toast({
-        title: 'Unit Added',
+        title: 'Manufactured unit added successfully.',
         description: `${data.productName.trim()} (${productNumber}) has been recorded.`,
       });
     } catch (error: any) {
@@ -2167,8 +2167,12 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         setUnitError('productNumber', { type: 'manual', message });
       }
       toast({
-        title: message === 'Product number already exists.' ? message : 'Add failed',
-        description: message === 'Product number already exists.' ? undefined : message,
+        title: message.toLowerCase().includes('serial number') || message.toLowerCase().includes('product number')
+          ? message
+          : 'Add failed',
+        description: message.toLowerCase().includes('serial number') || message.toLowerCase().includes('product number')
+          ? undefined
+          : message,
         variant: 'destructive',
       });
     } finally {

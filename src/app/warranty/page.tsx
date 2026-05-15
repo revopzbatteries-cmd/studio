@@ -288,7 +288,7 @@ export default function WarrantyPage() {
           </CardContent>
         </Card>
 
-        {/* ── Demo chips ────────────────────────────────────────────────── */}
+        {/* ── Demo chips ──────────────────────────────────────────────────
         <div className="mb-12 p-5 rounded-2xl border border-dashed border-primary/25 bg-primary/5">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
             🧪 Demo Product Numbers — click to test instantly
@@ -306,7 +306,7 @@ export default function WarrantyPage() {
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
 
         {/* ── Results ───────────────────────────────────────────────────── */}
         {hasSearched && (
@@ -649,14 +649,12 @@ function InfoRow({
 }) {
   const isGreen = accent === 'green';
   return (
-    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${
-      isGreen
+    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${isGreen
         ? 'bg-green-500/8 border-green-500/30'
         : 'bg-background/60 border-border/50'
-    }`}>
-      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-        isGreen ? 'bg-green-500/20 text-green-400' : 'bg-primary/15 text-primary'
       }`}>
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isGreen ? 'bg-green-500/20 text-green-400' : 'bg-primary/15 text-primary'
+        }`}>
         {icon}
       </div>
       <div>
