@@ -1649,11 +1649,21 @@ function WarrantyManagementSection({ warranties, permissions }: { warranties: Wa
                           {selectedWarranty && (
                             <div className="space-y-6 py-4">
                               <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
-                                  <p className="font-bold">{selectedWarranty.customerName}</p>
-                                  <p>{selectedWarranty.phone}</p>
-                                  <p className="text-xs">{selectedWarranty.email}</p>
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground uppercase">Customer</Label>
+                                    <p className="font-bold">{selectedWarranty.customerName}</p>
+                                    <p>{selectedWarranty.phone}</p>
+                                    <p className="text-xs">{selectedWarranty.email}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                                      Address
+                                    </p>
+                                    <p className="text-sm text-zinc-100 break-words">
+                                      {selectedWarranty.address || "Address not available"}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div>
                                   <Label className="text-xs text-muted-foreground uppercase">Dates</Label>

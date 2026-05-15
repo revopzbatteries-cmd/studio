@@ -11,6 +11,7 @@ export type WarrantyEntry = {
   expiryDate: string;
   status: WarrantyStatus;
   claimMessage?: string;
+  address?: string;
 };
 
 export const INITIAL_WARRANTIES: WarrantyEntry[] = [
@@ -56,6 +57,7 @@ function mapWarrantyDoc(docSnapshot: QueryDocumentSnapshot): WarrantyEntry {
     expiryDate: data.warrantyEndDate || '',
     status: data.status || 'Active',
     claimMessage: data.claimMessage || '',
+    address: data.address || '',
   };
 }
 
