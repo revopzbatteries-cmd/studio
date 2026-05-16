@@ -92,15 +92,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── Handle featured status ───────────────────────────────────────────────
+    // ── Enforce max 5 featured products rule ─────────────────────────────────
     if (body.isFeatured) {
       const featuredSnap = await adminDb
         .collection('products')
         .where('isFeatured', '==', true)
         .get();
-      const batch = adminDb.batch();
-      featuredSnap.docs.forEach(d => batch.update(d.ref, { isFeatured: false }));
-      await batch.commit();
+      if (featuredSnap.size >= 5) {
+        return NextResponse.json({ error: 'Maximum 5 featured products allowed.' }, { status: 400 });
+      }
     }
 
     // ── Transformation & Save ────────────────────────────────────────────────

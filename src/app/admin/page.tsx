@@ -1360,19 +1360,32 @@ function ProductSection({ permissions }: { permissions: string[] }) {
 
   const toggleFeatured = async (product: FirestoreProduct) => {
     const newFeatured = !product.isFeatured;
-    // Optimistic UI: enforce single-featured on the client
+
+    if (newFeatured) {
+      const currentFeaturedCount = products.filter(p => p.isFeatured).length;
+      if (currentFeaturedCount >= 5) {
+        toast({ title: 'Limit Exceeded', description: 'You can only feature up to 5 products.', variant: 'destructive' });
+        return;
+      }
+    }
+
+    // Optimistic UI
     setProducts(prev => prev.map(p => ({
       ...p,
-      isFeatured: p.id === product.id ? newFeatured : (newFeatured ? false : p.isFeatured),
+      isFeatured: p.id === product.id ? newFeatured : p.isFeatured,
     })));
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated.');
-      await fetch(`/api/products/${product.id}`, {
+      const res = await fetch(`/api/products/${product.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ isFeatured: newFeatured }),
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to update.');
+      }
     } catch (err: any) {
       // Rollback
       setProducts(prev => prev.map(p => ({ ...p, isFeatured: p.id === product.id ? product.isFeatured : p.isFeatured })));
