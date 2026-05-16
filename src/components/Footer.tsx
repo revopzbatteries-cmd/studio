@@ -41,35 +41,35 @@ export function Footer() {
               REVOPZ
             </Link>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Leading manufacturer of high-efficiency lithium-ion inverters and batteries. 
+              Leading manufacturer of high-efficiency lithium-ion inverters and batteries.
               Powering homes and businesses with reliable energy systems.
             </p>
             <div className="flex space-x-1">
-              <Link 
-                href="#" 
+              <Link
+                href="#"
                 title="LinkedIn"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
                 onClick={handleLinkClick}
               >
                 <Linkedin size={20} />
               </Link>
-              <Link 
-                href="#" 
+              <Link
+                href="#"
                 title="X (Twitter)"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
                 onClick={handleLinkClick}
               >
                 <Twitter size={20} />
               </Link>
-              <Link 
-                href="#" 
+              <Link
+                href="#"
                 title="Facebook"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
                 onClick={handleLinkClick}
               >
                 <Facebook size={20} />
               </Link>
-              <Link 
+              <Link
                 href={instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -78,10 +78,10 @@ export function Footer() {
               >
                 <Instagram size={20} />
               </Link>
-              <Link 
-                href="https://wa.me/919746804951" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <Link
+                href="https://wa.me/919746804951"
+                target="_blank"
+                rel="noopener noreferrer"
                 title="Chat on WhatsApp"
                 className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/10"
               >
@@ -116,10 +116,10 @@ export function Footer() {
               </li>
               <li className="flex items-start space-x-3">
                 <MapPin size={16} className="text-primary mt-1" />
-                <a 
-                  href={googleMapsUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="hover:text-primary transition-colors"
                 >
                   Padinjarangadi, Pattambi, Palakkad, Kerala
@@ -145,14 +145,14 @@ export function Footer() {
             {" REVOPZ Energy Systems. All rights reserved."}
           </p>
           <div className="flex space-x-6">
-            <button 
-              onClick={() => setPrivacyOpen(true)} 
+            <button
+              onClick={() => setPrivacyOpen(true)}
               className="hover:text-primary transition-colors"
             >
               Privacy Policy
             </button>
-            <button 
-              onClick={() => setTermsOpen(true)} 
+            <button
+              onClick={() => setTermsOpen(true)}
               className="hover:text-primary transition-colors"
             >
               Terms of Service
@@ -164,9 +164,7 @@ export function Footer() {
         <div className="mt-8 text-center">
           <p className="text-[10px] text-muted-foreground/40 font-medium tracking-wide">
             {"Built with care by "}
-            <Link href="#" className="hover:text-primary transition-colors">Navaneeth</Link>
-            {" & "}
-            <Link href="#" className="hover:text-primary transition-colors">Prajosh</Link>
+            <Link href="https://hexakode.in" className="hover:text-primary transition-colors">Hexakode</Link>
           </p>
         </div>
       </div>
