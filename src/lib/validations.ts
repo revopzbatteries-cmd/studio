@@ -77,8 +77,7 @@ export const isValidProductNumber = (value: string) => {
 export const addManufacturedUnitSchema = z.object({
   productName: z.string()
     .trim()
-    .min(1, "Product name is required")
-    .min(3, "Product name must be at least 3 characters"),
+    .min(1, "Please select a product"),
   productNumber: z.string()
     .trim()
     .min(1, "Product number is required")
