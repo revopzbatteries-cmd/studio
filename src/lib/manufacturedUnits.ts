@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
   type FirestoreError,
   type QueryDocumentSnapshot,
   type Timestamp,
@@ -198,4 +199,64 @@ export async function removeUnitFakeFlag(productNumber: string): Promise<void> {
     fakeReason: '',
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function bulkAddManufacturedUnits(
+  inputs: CreateManufacturedUnitInput[]
+): Promise<{ successCount: number; failedSerials: string[] }> {
+  const results = {
+    successCount: 0,
+    failedSerials: [] as string[],
+  };
+
+  // STEP 1: READ ALL - Check for existence before any writes
+  // We perform all reads first because Firestore transactions/batches 
+  // require all reads before all writes.
+  const checkPromises = inputs.map(async (input) => {
+    const productNumber = normalizeProductNumber(input.productNumber);
+    const unitRef = getUnitRef(productNumber);
+    const snap = await getDoc(unitRef);
+    return { input, exists: snap.exists(), productNumber };
+  });
+
+  const checkResults = await Promise.all(checkPromises);
+  
+  // Collect all serials that already exist
+  results.failedSerials = checkResults
+    .filter(r => r.exists)
+    .map(r => r.productNumber);
+
+  if (results.failedSerials.length > 0) {
+    throw new Error(`${results.failedSerials.length} serial numbers already exist: ${results.failedSerials.join(', ')}`);
+  }
+
+  // STEP 2: WRITE ALL - Use a batch for atomic creation
+  const batch = writeBatch(db);
+  
+  for (const { input, productNumber } of checkResults) {
+    const unitRef = getUnitRef(productNumber);
+    batch.set(unitRef, {
+      productName: input.productName.trim(),
+      productNameNormalized: input.productName.trim().toLowerCase(),
+      productNumber,
+      category: input.category,
+      manufacturedDate: input.manufacturedDate,
+      warrantyMonths: input.warrantyMonths,
+      status: input.status,
+      warrantyStatus: 'not_registered',
+      isFakeProduct: false,
+      fakeMarkedAt: null,
+      fakeMarkedBy: null,
+      fakeReason: '',
+      createdBy: input.createdBy,
+      createdByName: input.createdByName.trim(),
+      createdByRole: input.createdByRole,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    results.successCount++;
+  }
+
+  await batch.commit();
+  return results;
 }

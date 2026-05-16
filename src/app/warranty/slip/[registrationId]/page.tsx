@@ -153,7 +153,7 @@ export default async function WarrantySlipPage({ params }: { params: Promise<{ r
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
               <div className="p-4 rounded-xl bg-muted/30 border border-border/40 print:print-border print:print-bg-light text-center">
                 <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Status</p>
-                <p className="font-bold text-green-500 print:text-black">{warranty.warrantyStatus.toUpperCase()}</p>
+                <p className="font-bold text-green-500 print:text-black">{(warranty.warrantyStatus || 'active').toUpperCase()}</p>
               </div>
               <div className="p-4 rounded-xl bg-muted/30 border border-border/40 print:print-border print:print-bg-light text-center">
                 <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Start Date</p>

@@ -55,6 +55,7 @@ import { ProductForm } from './components/ProductForm';
 import { ProductThumbnail } from './components/ProductThumbnail';
 import { EditProfileModal } from './components/EditProfileModal';
 import { BarcodeScanner } from './components/BarcodeScanner';
+import { BulkAddUnitsModal } from '@/app/admin/components/BulkAddUnitsModal';
 import type { AdminProduct } from './types';
 import { firestoreToAdmin, adminToFirestore } from './types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -2090,6 +2091,8 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const [products, setProducts] = useState<FirestoreProduct[]>([]);
   const [isFetchingProducts, setIsFetchingProducts] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+  const [lastScannedUnit, setLastScannedUnit] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -2111,6 +2114,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       fetchProducts();
     }
   }, [isDialogOpen, products.length]);
+
 
 
   // ── Fake Product Modal state ──────────────────────────────────────────────
@@ -2164,6 +2168,22 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
     mode: 'onChange',
     defaultValues: defaultUnitFormValues,
   });
+
+  useEffect(() => {
+    if (!lastScannedUnit) return;
+
+    setUnitValue('productNumber', lastScannedUnit.toUpperCase(), { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    
+    toast({
+      title: "Scan Successful",
+      description: `Detected: ${lastScannedUnit}`,
+    });
+
+    setLastScannedUnit(null);
+  }, [lastScannedUnit, setUnitValue, toast]);
 
   const watchedCategory = watchUnitForm('category');
 
@@ -2383,12 +2403,26 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
             </SelectContent>
           </Select>
           {canAdd && (
-            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
-              <Plus size={16} className="mr-2" /> Add Unit
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={openAddDialog} className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 shrink-0" disabled={isLoadingUnits}>
+                <Plus size={16} className="mr-2" /> Add Unit
+              </Button>
+              <Button onClick={() => setIsBulkDialogOpen(true)} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
+                <Plus size={16} className="mr-2" /> Bulk Add
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>
+
+      {/* ── Bulk Add Dialog ────────────────────────────────────────────────── */}
+      <BulkAddUnitsModal
+        open={isBulkDialogOpen}
+        onOpenChange={setIsBulkDialogOpen}
+        products={products}
+        isFetchingProducts={isFetchingProducts}
+        adminProfile={adminProfile}
+      />
 
       {/* ── Add Unit Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) closeDialog(); }}>
@@ -2495,16 +2529,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               <BarcodeScanner 
                 open={isScannerOpen} 
                 onOpenChange={setIsScannerOpen}
-                onScan={(val) => {
-                  setUnitValue('productNumber', val.toUpperCase(), { 
-                    shouldValidate: true, 
-                    shouldDirty: true 
-                  });
-                  toast({
-                    title: "Scan Successful",
-                    description: `Detected: ${val}`,
-                  });
-                }}
+                onScan={(val) => setLastScannedUnit(val)}
               />
               {unitErrors.productNumber
                 ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
