@@ -11,11 +11,8 @@ export async function getWarrantyStatusBySerial(serial: string) {
   const warrantiesSnap = await warrantiesQuery.get();
   
   const warrantyDoc = warrantiesSnap.empty ? null : warrantiesSnap.docs[0];
-  const warrantyData = warrantyDoc ? warrantyDoc.data() : null;
-
-  console.log("[Client Warranty Search] Warranty found:", !!warrantyData);
-
-  if (warrantyData) {
+  if (warrantyDoc) {
+    const warrantyData = warrantyDoc.data();
     console.log("[Client Warranty Search] Returning ACTIVE warranty");
     
     const todayDateStr = new Date().toISOString().split('T')[0];
@@ -38,6 +35,7 @@ export async function getWarrantyStatusBySerial(serial: string) {
       status: currentStatus,
       data: {
         ...warrantyData,
+        registrationId: warrantyDoc.id,
         status: currentStatus
       }
     };

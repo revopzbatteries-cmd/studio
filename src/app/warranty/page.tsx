@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
   Package, User, Phone, Mail, MapPin, Tag, XCircle, ClipboardCheck,
-  ShieldOff, RefreshCw, CalendarDays, Lock, ShieldAlert, AlertTriangle,
+  ShieldOff, RefreshCw, CalendarDays, Lock, ShieldAlert, AlertTriangle, FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { getManufacturedUnit } from '@/lib/manufacturedUnits';
+import { WarrantySlipModal } from './components/WarrantySlipModal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type WarrantyStatus = 'not_registered' | 'active' | 'expired';
@@ -27,6 +28,7 @@ interface Product {
   warrantyStatus: WarrantyStatus;
   purchaseDate?: string;
   expiryDate?: string;
+  registrationId?: string;
 }
 
 // ── Date formatter ────────────────────────────────────────────────────────────
@@ -119,6 +121,9 @@ export default function WarrantyPage() {
   // contact support modal
   const [showContactModal, setShowContactModal] = useState(false);
 
+  // warranty slip modal
+  const [isSlipOpen, setIsSlipOpen] = useState(false);
+
   // ── Body scroll lock when any modal is open ──────────────────────────
   useEffect(() => {
     const anyOpen = isRegisterOpen || showContactModal;
@@ -168,6 +173,7 @@ export default function WarrantyPage() {
           warrantyStatus: data.status, // 'active' | 'expired'
           purchaseDate: data.data.installationDate,
           expiryDate: data.data.warrantyEndDate,
+          registrationId: data.data.registrationId,
         });
       }
     } catch (err) {
@@ -484,7 +490,7 @@ export default function WarrantyPage() {
                 {/* ── CASE 2: ACTIVE ──────────────────────────────────── */}
                 {selectedProduct.warrantyStatus === 'active' && (
                   <div className="p-6 rounded-2xl border border-green-500/25 bg-green-500/5 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div>
+                    <div className="flex-1">
                       <h4 className="text-lg font-bold font-headline text-green-400">✅ Active Warranty Coverage</h4>
                       <p className="text-muted-foreground text-sm mt-1">
                         {selectedProduct.expiryDate
@@ -492,6 +498,15 @@ export default function WarrantyPage() {
                           : 'Your product is covered under active warranty.'}
                       </p>
                     </div>
+                    {selectedProduct.registrationId && (
+                      <Button 
+                        variant="outline" 
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10 hover:text-green-300"
+                        onClick={() => setIsSlipOpen(true)}
+                      >
+                        <FileText size={18} className="mr-2" /> View Warranty Slip
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -724,6 +739,13 @@ export default function WarrantyPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Warranty Slip Modal ────────────────────────────────────────── */}
+      <WarrantySlipModal 
+        open={isSlipOpen}
+        onOpenChange={setIsSlipOpen}
+        registrationId={selectedProduct?.registrationId ?? ''}
+      />
     </div>
   );
 }
