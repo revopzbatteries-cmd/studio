@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Image from 'next/image';
-import { ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ImageIcon, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 
 interface GalleryImage {
   url: string;
@@ -18,6 +18,11 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   // Start with the main image selected; fall back to index 0
   const mainIndex = images.findIndex(img => img.isMain);
   const [activeIndex, setActiveIndex] = useState(mainIndex >= 0 ? mainIndex : 0);
+  
+  // ── Zoom State ──
+  const [zoomPos, setZoomPos] = useState({ x: 0, y: 0 });
+  const [isZoomed, setIsZoomed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const hasImages = images.length > 0;
   const activeImage = hasImages ? images[activeIndex] : null;
@@ -26,12 +31,43 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const prev = () => setActiveIndex(i => (i - 1 + images.length) % images.length);
   const next = () => setActiveIndex(i => (i + 1) % images.length);
 
+  // ── Zoom Handlers ──
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    
+    // Only zoom on large screens
+    if (window.innerWidth < 1024) return;
+
+    const { left, top, width, height } = containerRef.current.getBoundingClientRect();
+    const x = ((e.clientX - left) / width) * 100;
+    const y = ((e.clientY - top) / height) * 100;
+    
+    setZoomPos({ x, y });
+  };
+
+  const handleMouseEnter = () => {
+    if (window.innerWidth >= 1024) {
+      setIsZoomed(true);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setIsZoomed(false);
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {/* ── Hero image ── */}
-      <div className="relative aspect-square lg:h-[540px] w-full rounded-3xl overflow-hidden border border-border/60 bg-card/50 flex items-center justify-center group">
+      {/* ── Hero image container ── */}
+      <div 
+        ref={containerRef}
+        onMouseMove={handleMouseMove}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className="relative aspect-square lg:h-[540px] w-full rounded-3xl overflow-hidden border border-border/60 bg-card/50 flex items-center justify-center group cursor-crosshair"
+      >
         {activeImage ? (
           <>
+            {/* Base Image */}
             <Image
               key={activeImage.url}
               src={activeImage.url}
@@ -39,36 +75,56 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-contain p-6 md:p-10 transition-opacity duration-300"
+              className={`object-contain p-6 md:p-10 transition-opacity duration-300 ${isZoomed ? 'opacity-0' : 'opacity-100'}`}
             />
 
+            {/* Magnified Image (Desktop Only) */}
+            {isZoomed && (
+              <div 
+                className="absolute inset-0 pointer-events-none z-10 hidden lg:block transition-opacity duration-300"
+                style={{
+                  backgroundImage: `url(${activeImage.url})`,
+                  backgroundPosition: `${zoomPos.x}% ${zoomPos.y}%`,
+                  backgroundSize: '250%', // 2.5x zoom
+                  backgroundRepeat: 'no-repeat'
+                }}
+              />
+            )}
+
+            {/* Zoom Hint Icon */}
+            {!isZoomed && (
+              <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-background/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/60 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden lg:flex">
+                <ZoomIn size={18} />
+              </div>
+            )}
+
             {/* Prev / next arrows — only when multiple */}
-            {hasMultiple && (
+            {!isZoomed && hasMultiple && (
               <>
                 <button
                   type="button"
-                  onClick={prev}
+                  onClick={(e) => { e.stopPropagation(); prev(); }}
                   aria-label="Previous image"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100 z-20"
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button
                   type="button"
-                  onClick={next}
+                  onClick={(e) => { e.stopPropagation(); next(); }}
                   aria-label="Next image"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100 z-20"
                 >
                   <ChevronRight size={18} />
                 </button>
 
                 {/* Dot indicators */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
                   {images.map((_, i) => (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => setActiveIndex(i)}
+                      onClick={(e) => { e.stopPropagation(); setActiveIndex(i); }}
                       aria-label={`View image ${i + 1}`}
                       className={[
                         'h-1.5 rounded-full transition-all duration-200',
