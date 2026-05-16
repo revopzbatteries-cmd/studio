@@ -19,7 +19,6 @@ export async function GET(request: Request) {
   try {
     const productsSnap = await adminDb
       .collection('products')
-      .orderBy('displayOrder', 'asc')
       .get();
 
     const products = productsSnap.docs.map(doc => ({

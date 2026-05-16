@@ -2,12 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { getProductBySlugServer } from '@/lib/products-server';
-import {
-  CheckCircle2, ChevronLeft, ArrowRight, Zap,
-  Shield, Activity, ShieldCheck, Wrench,
-} from 'lucide-react';
-import { EnquiryButton } from './EnquiryButton';
-import { ProductGallery } from './ProductGallery';
+import { ChevronLeft } from 'lucide-react';
+import { ProductGallery } from '@/app/products/[slug]/ProductGallery';
+import { ProductInfoPanel } from '@/app/products/[slug]/ProductInfoPanel';
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -25,152 +22,52 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         ? [{ url: product.imageUrl, isMain: true }]
         : [];
 
-  const hasPerformance = product.performance && product.performance.length > 0;
-  const hasSafety = product.safety && product.safety.length > 0;
-  const hasWarranty = !!product.warranty;
-  const hasInstallation = !!product.installation;
-  const hasAdditionalInfo = hasWarranty || hasInstallation;
-  const hasSpecs = product.technicalSpecifications && Object.keys(product.technicalSpecifications).length > 0;
-
   return (
-    <div className="min-h-screen bg-background py-16">
-      <div className="container mx-auto px-4 md:px-6">
-        <Button asChild variant="ghost" className="mb-12 hover:text-primary pl-0">
-          <Link href="/products" className="flex items-center gap-2">
-            <ChevronLeft size={16} /> Back to Products
-          </Link>
-        </Button>
+    <div className="min-h-screen bg-background pb-32 overflow-x-hidden selection:bg-primary/30 selection:text-primary-foreground">
+      {/* ── Cinematic Background Glows ── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[140px] opacity-40 animate-pulse duration-[10s]" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-accent/5 rounded-full blur-[140px] opacity-20" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-primary/2 rounded-full blur-[160px] opacity-50" />
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          {/* Left: Product Gallery */}
-          <ProductGallery images={galleryImages} productName={product.name} />
+      <div className="container mx-auto px-4 md:px-8 relative z-10">
+        {/* Navigation - Minimalist Back Link */}
+        <div className="pt-10 mb-16 animate-in fade-in slide-in-from-left-6 duration-700">
+          <Button asChild variant="ghost" className="hover:text-primary group px-0 -ml-2 text-muted-foreground/60 transition-colors">
+            <Link href="/products" className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-card border border-border/40 flex items-center justify-center group-hover:border-primary/40 group-hover:bg-primary/10 transition-all">
+                <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-[0.2em]">Explore Collection</span>
+            </Link>
+          </Button>
+        </div>
 
-          {/* Right: Product Details */}
-          <div className="space-y-10">
-            {/* Title block */}
-            <div className="space-y-4">
-              <div className="text-sm text-primary font-bold uppercase tracking-widest">{product.category}</div>
-              <h1 className="text-4xl md:text-5xl font-bold font-headline">{product.name}</h1>
-              <p className="text-xl font-medium text-muted-foreground">{product.powerRating}</p>
-              <p className="text-lg text-muted-foreground leading-relaxed pt-2">
-                {product.description || product.shortDescription}
-              </p>
+        {/* ── Main Showcase Section ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20 items-start">
+          {/* Left Side: Immersive Sticky Gallery (5 cols) */}
+          <div className="lg:col-span-5 lg:sticky lg:top-32 animate-in fade-in slide-in-from-left-12 duration-1000">
+            <ProductGallery images={galleryImages} productName={product.name} />
+          </div>
+
+          {/* Right Side: Detailed Information (7 cols) */}
+          <div className="lg:col-span-7 lg:pl-4">
+            <ProductInfoPanel product={product} />
+          </div>
+        </div>
+
+        {/* ── Footer Call to Action ── */}
+        <div className="mt-48 text-center space-y-10 animate-in fade-in duration-1000 delay-500">
+          <div className="h-px w-full max-w-2xl mx-auto bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+          <div className="max-w-xl mx-auto">
+            <p className="text-xl text-muted-foreground/90 font-medium mb-6 leading-relaxed">
+              "Powering the future with precision engineering and sustainable innovation."
+            </p>
+            <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-primary/5 border border-primary/20 text-xs font-bold uppercase tracking-widest text-primary">
+              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+              Designed for Excellence
             </div>
-
-            {/* Performance Highlights */}
-            {hasPerformance && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Activity size={18} className="text-primary" />
-                  <h3 className="text-lg font-bold font-headline">Performance Highlights</h3>
-                </div>
-                <ul className="space-y-2">
-                  {product.performance!.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <Zap size={16} className="text-accent shrink-0 mt-1" />
-                      <span className="text-muted-foreground">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <EnquiryButton productName={product.name} />
-
-            {/* Key Features & Ideal For */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pt-6 border-t">
-              {product.features && product.features.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold font-headline">Key Features</h3>
-                  <ul className="space-y-3">
-                    {product.features.map((feature, i) => (
-                      <li key={i} className="flex items-start gap-3">
-                        <CheckCircle2 size={20} className="text-primary shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {product.idealFor && product.idealFor.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold font-headline">Ideal For</h3>
-                  <ul className="space-y-3">
-                    {product.idealFor.map((item, i) => (
-                      <li key={i} className="flex items-start gap-3">
-                        <ArrowRight size={18} className="text-accent shrink-0 mt-1" />
-                        <span className="text-muted-foreground">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* Safety & Protection */}
-            {hasSafety && (
-              <div className="space-y-4 pt-6 border-t">
-                <div className="flex items-center gap-2">
-                  <Shield size={18} className="text-primary" />
-                  <h3 className="text-xl font-bold font-headline">Safety & Protection</h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {product.safety!.map((item, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
-                                 bg-primary/10 text-primary border border-primary/20"
-                    >
-                      <ShieldCheck size={13} />
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Technical Specifications */}
-            {hasSpecs && (
-              <div className="bg-card p-8 rounded-2xl border">
-                <h3 className="text-xl font-bold font-headline mb-6">Technical Specifications</h3>
-                <div className="grid grid-cols-1 gap-4">
-                  {Object.entries(product.technicalSpecifications).map(([key, value]) => (
-                    <div key={key} className="flex justify-between py-3 border-b border-border/50 last:border-0">
-                      <span className="text-muted-foreground">{key}</span>
-                      <span className="font-semibold">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Warranty & Installation */}
-            {hasAdditionalInfo && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {hasWarranty && (
-                  <div className="flex items-start gap-3 p-5 rounded-xl border bg-card/60">
-                    <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                      <ShieldCheck size={18} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Warranty</p>
-                      <p className="font-medium text-sm">{product.warranty}</p>
-                    </div>
-                  </div>
-                )}
-                {hasInstallation && (
-                  <div className="flex items-start gap-3 p-5 rounded-xl border bg-card/60">
-                    <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                      <Wrench size={18} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Installation</p>
-                      <p className="font-medium text-sm">{product.installation}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>

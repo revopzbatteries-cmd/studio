@@ -15,7 +15,6 @@ interface ProductGalleryProps {
 }
 
 export function ProductGallery({ images, productName }: ProductGalleryProps) {
-  // Start with the main image selected; fall back to index 0
   const mainIndex = images.findIndex(img => img.isMain);
   const [activeIndex, setActiveIndex] = useState(mainIndex >= 0 ? mainIndex : 0);
   
@@ -28,14 +27,9 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const activeImage = hasImages ? images[activeIndex] : null;
   const hasMultiple = images.length > 1;
 
-  const prev = () => setActiveIndex(i => (i - 1 + images.length) % images.length);
-  const next = () => setActiveIndex(i => (i + 1) % images.length);
-
   // ── Zoom Handlers ──
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
-    
-    // Only zoom on large screens
     if (window.innerWidth < 1024) return;
 
     const { left, top, width, height } = containerRef.current.getBoundingClientRect();
@@ -45,129 +39,86 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     setZoomPos({ x, y });
   };
 
-  const handleMouseEnter = () => {
-    if (window.innerWidth >= 1024) {
-      setIsZoomed(true);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setIsZoomed(false);
-  };
-
   return (
-    <div className="flex flex-col gap-4">
-      {/* ── Hero image container ── */}
+    <div className="space-y-8">
+      {/* ── Main Stage ── */}
       <div 
         ref={containerRef}
         onMouseMove={handleMouseMove}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        className="relative aspect-square lg:h-[540px] w-full rounded-3xl overflow-hidden border border-border/60 bg-card/50 flex items-center justify-center group cursor-crosshair"
+        onMouseEnter={() => window.innerWidth >= 1024 && setIsZoomed(true)}
+        onMouseLeave={() => setIsZoomed(false)}
+        className="relative aspect-[4/5] md:aspect-square w-full rounded-[2.5rem] overflow-hidden border border-border/40 bg-card/30 backdrop-blur-md flex items-center justify-center group cursor-zoom-in"
       >
         {activeImage ? (
           <>
-            {/* Base Image */}
-            <Image
-              key={activeImage.url}
-              src={activeImage.url}
-              alt={productName}
-              fill
-              priority
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className={`object-contain p-6 md:p-10 transition-opacity duration-300 ${isZoomed ? 'opacity-0' : 'opacity-100'}`}
-            />
+            {/* Immersive Background Shadow */}
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20 pointer-events-none" />
+            
+            {/* Hero Image */}
+            <div className={`relative w-full h-full p-8 md:p-16 transition-all duration-700 ease-out ${isZoomed ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}>
+              <Image
+                key={activeImage.url}
+                src={activeImage.url}
+                alt={productName}
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-in fade-in zoom-in-95 duration-700"
+              />
+            </div>
 
-            {/* Magnified Image (Desktop Only) */}
+            {/* Premium Magnifier (Desktop) */}
             {isZoomed && (
               <div 
-                className="absolute inset-0 pointer-events-none z-10 hidden lg:block transition-opacity duration-300"
+                className="absolute inset-0 pointer-events-none z-10 hidden lg:block animate-in fade-in duration-300"
                 style={{
                   backgroundImage: `url(${activeImage.url})`,
                   backgroundPosition: `${zoomPos.x}% ${zoomPos.y}%`,
-                  backgroundSize: '250%', // 2.5x zoom
+                  backgroundSize: '250%',
                   backgroundRepeat: 'no-repeat'
                 }}
               />
             )}
 
-            {/* Zoom Hint Icon */}
-            {!isZoomed && (
-              <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-background/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/60 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden lg:flex">
+            {/* Interaction Hints */}
+            <div className="absolute top-6 right-6 flex flex-col gap-3 z-20">
+              <div className="h-10 w-10 rounded-full bg-background/30 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/80 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0">
                 <ZoomIn size={18} />
               </div>
-            )}
-
-            {/* Prev / next arrows — only when multiple */}
-            {!isZoomed && hasMultiple && (
-              <>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); prev(); }}
-                  aria-label="Previous image"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100 z-20"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); next(); }}
-                  aria-label="Next image"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-background/80 border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition-all opacity-0 group-hover:opacity-100 z-20"
-                >
-                  <ChevronRight size={18} />
-                </button>
-
-                {/* Dot indicators */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-                  {images.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setActiveIndex(i); }}
-                      aria-label={`View image ${i + 1}`}
-                      className={[
-                        'h-1.5 rounded-full transition-all duration-200',
-                        i === activeIndex
-                          ? 'w-5 bg-primary'
-                          : 'w-1.5 bg-foreground/30 hover:bg-foreground/50',
-                      ].join(' ')}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
+            </div>
           </>
         ) : (
           <ImageIcon size={80} className="text-muted-foreground/20" />
         )}
       </div>
 
-      {/* ── Thumbnail strip (only when > 1 image) ── */}
+      {/* ── High-end Thumbnails ── */}
       {hasMultiple && (
-        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
-          {images.map((img, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setActiveIndex(i)}
-              aria-label={`Select image ${i + 1}`}
-              className={[
-                'relative flex-shrink-0 h-16 w-16 rounded-xl overflow-hidden border-2 transition-all duration-150',
-                i === activeIndex
-                  ? 'border-primary ring-2 ring-primary/25 shadow-md shadow-primary/10'
-                  : 'border-border/40 hover:border-border opacity-60 hover:opacity-100',
-              ].join(' ')}
-            >
-              <Image
-                src={img.url}
-                alt={`${productName} view ${i + 1}`}
-                fill
-                sizes="64px"
-                className="object-cover"
-              />
-            </button>
-          ))}
+        <div className="flex justify-center gap-4 px-2">
+          <div className="flex gap-4 p-3 rounded-3xl bg-card/20 backdrop-blur-xl border border-border/30 overflow-x-auto no-scrollbar scroll-smooth">
+            {images.map((img, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActiveIndex(i)}
+                className={`
+                  relative flex-shrink-0 h-20 w-20 rounded-2xl overflow-hidden transition-all duration-500
+                  ${i === activeIndex 
+                    ? 'ring-2 ring-blue-500 ring-offset-4 ring-offset-background scale-105 shadow-xl shadow-blue-500/20' 
+                    : 'opacity-40 hover:opacity-80 border border-white/5 grayscale hover:grayscale-0'
+                  }
+                `}
+              >
+                <Image
+                  src={img.url}
+                  alt={`${productName} view ${i + 1}`}
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                />
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
