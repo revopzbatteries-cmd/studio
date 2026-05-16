@@ -64,14 +64,14 @@ const todayDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-export const PRODUCT_NUMBER_PATTERN = /^[A-Z0-9-]+$/;
+export const PRODUCT_NUMBER_PATTERN = /^[A-Z0-9-_]+$/;
 
 export const normalizeProductNumber = (value: string) => value.trim().toUpperCase();
 
 export const isValidProductNumber = (value: string) => {
   const normalizedValue = normalizeProductNumber(value);
 
-  return normalizedValue.length >= 5 && PRODUCT_NUMBER_PATTERN.test(normalizedValue);
+  return normalizedValue.length > 0 && PRODUCT_NUMBER_PATTERN.test(normalizedValue);
 };
 
 export const addManufacturedUnitSchema = z.object({
@@ -81,10 +81,9 @@ export const addManufacturedUnitSchema = z.object({
   productNumber: z.string()
     .trim()
     .min(1, "Product number is required")
-    .min(5, "Product number must be at least 5 characters")
     .transform(value => value.toUpperCase())
     .refine(value => !/\s/.test(value), "Product number cannot contain spaces")
-    .refine(value => PRODUCT_NUMBER_PATTERN.test(value), "Use only letters, numbers, and hyphens"),
+    .refine(value => PRODUCT_NUMBER_PATTERN.test(value), "Use only letters, numbers, hyphens, and underscores"),
   category: z.enum(['Inverter', 'Battery', 'Solar', 'Other'], {
     errorMap: () => ({ message: "Please select a valid category" })
   }),
@@ -126,7 +125,6 @@ export const productSchema = z.object({
   installation: z.string().optional().or(z.literal('')),
   isPublished: z.boolean(),
   isFeatured: z.boolean(),
-  displayOrder: z.number().int().min(0),
 });
 
 

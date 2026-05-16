@@ -32,7 +32,6 @@ export type AdminProduct = {
   installation: string;
   isPublished: boolean;
   isFeatured: boolean;
-  displayOrder: number;
 };
 
 // ── Firestore document shape ──────────────────────────────────────────────────
@@ -72,7 +71,6 @@ export type FirestoreProduct = {
   installation: string;
   isPublished: boolean;
   isFeatured: boolean;
-  displayOrder: number;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -125,7 +123,6 @@ export function firestoreToAdmin(doc: FirestoreProduct): AdminProduct {
     installation: doc.installation ?? '',
     isPublished: doc.isPublished ?? (doc.status === 'Published'),
     isFeatured: doc.isFeatured ?? false,
-    displayOrder: doc.displayOrder ?? 0,
   };
 }
 
@@ -172,7 +169,6 @@ export function adminToFirestore(
     installation: p.installation,
     isPublished: p.isPublished,
     isFeatured: p.isFeatured,
-    displayOrder: p.displayOrder,
   };
 }
 

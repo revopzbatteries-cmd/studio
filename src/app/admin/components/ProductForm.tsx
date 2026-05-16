@@ -127,7 +127,6 @@ const EMPTY: AdminProduct = {
   installation: '',
   isPublished: false,
   isFeatured: false,
-  displayOrder: 0,
 };
 
 
@@ -240,7 +239,7 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
               <FieldError message={errors.category} />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="pf-power" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Power Rating <span className="text-destructive">*</span>
               </Label>
@@ -252,21 +251,6 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
                 className={inputCls('powerRating')}
               />
               <FieldError message={errors.powerRating} />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-order" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Display Order
-              </Label>
-              <Input
-                id="pf-order"
-                type="number"
-                min={0}
-                value={data.displayOrder}
-                onChange={e => setField('displayOrder', Number(e.target.value))}
-                placeholder="e.g. 1"
-                className="bg-background/50 border-border/60 focus:border-primary/50"
-              />
             </div>
 
             <div className="space-y-1.5 md:col-span-2">

@@ -39,6 +39,7 @@ import {
   Globe,
   Star,
   Filter,
+  QrCode,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +54,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
 import { ProductThumbnail } from './components/ProductThumbnail';
 import { EditProfileModal } from './components/EditProfileModal';
+import { BarcodeScanner } from './components/BarcodeScanner';
 import type { AdminProduct } from './types';
 import { firestoreToAdmin, adminToFirestore } from './types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -2087,6 +2089,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [products, setProducts] = useState<FirestoreProduct[]>([]);
   const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
 
   useEffect(() => {
@@ -2469,15 +2472,43 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                       }
                     },
                   })}
-                  className={`font-mono pr-10 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  className={`font-mono pr-12 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {isCheckingDuplicate && (
-                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                )}
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {isCheckingDuplicate && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                    onClick={() => setIsScannerOpen(true)}
+                    title="Scan Barcode / QR Code"
+                  >
+                    <QrCode size={18} />
+                  </Button>
+                </div>
               </div>
+
+              {/* Barcode Scanner Modal */}
+              <BarcodeScanner 
+                open={isScannerOpen} 
+                onOpenChange={setIsScannerOpen}
+                onScan={(val) => {
+                  setUnitValue('productNumber', val.toUpperCase(), { 
+                    shouldValidate: true, 
+                    shouldDirty: true 
+                  });
+                  toast({
+                    title: "Scan Successful",
+                    description: `Detected: ${val}`,
+                  });
+                }}
+              />
               {unitErrors.productNumber
                 ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
-                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, and hyphens only.</p>
+                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, hyphens, and underscores only.</p>
               }
             </div>
 
