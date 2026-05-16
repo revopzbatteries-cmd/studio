@@ -2085,6 +2085,46 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [products, setProducts] = useState<FirestoreProduct[]>([]);
+  const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsProductDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isDialogOpen && products.length === 0) {
+      const fetchProducts = async () => {
+        setIsFetchingProducts(true);
+        try {
+          const idToken = await auth.currentUser?.getIdToken();
+          const res = await fetch('/api/products', { headers: { Authorization: `Bearer ${idToken}` } });
+          if (!res.ok) throw new Error('Failed to fetch products');
+          const data = await res.json();
+          setProducts(data.products ?? []);
+        } catch (err) {
+          console.error('[ManufacturedUnits] Error fetching products:', err);
+        } finally {
+          setIsFetchingProducts(false);
+        }
+      };
+      fetchProducts();
+    }
+  }, [isDialogOpen, products.length]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearchTerm) return products;
+    return products.filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()));
+  }, [products, productSearchTerm]);
 
   // ── Fake Product Modal state ──────────────────────────────────────────────
   const [fakeModalOpen, setFakeModalOpen] = useState(false);
@@ -2153,6 +2193,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
   const openAddDialog = () => {
     resetUnitForm({ ...defaultUnitFormValues, manufacturedDate: getTodayInputDate() });
+    setProductSearchTerm('');
     setIsDialogOpen(true);
   };
 
@@ -2222,6 +2263,12 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
       return;
     }
 
+    const matchedProduct = products.find(p => p.name === data.productName);
+    if (!matchedProduct) {
+      setUnitError('productName', { type: 'manual', message: 'Please select a valid product from the dropdown list.' });
+      return;
+    }
+
     const normalizedProductNumber = normalizeProductNumber(data.productNumber);
 
     setIsCheckingDuplicate(true);
@@ -2254,6 +2301,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
       setIsDialogOpen(false);
       resetUnitForm(defaultUnitFormValues);
+      setProductSearchTerm('');
       toast({
         title: 'Manufactured unit added successfully.',
         description: `${data.productName.trim()} (${productNumber}) has been recorded.`,
@@ -2370,16 +2418,59 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
           </DialogHeader>
 
           <form onSubmit={handleUnitSubmit(onAddUnitSubmit)} className="space-y-4 py-2">
-            <div className="space-y-1">
+            <div className="space-y-1 relative" ref={dropdownRef}>
               <Label htmlFor="unit-product-name">Product Name <span className="text-destructive">*</span></Label>
               <Input
                 id="unit-product-name"
-                placeholder="e.g. RZ 1350+"
-                {...registerUnit('productName')}
+                placeholder="Search and select a product"
+                value={productSearchTerm}
+                onChange={(e) => {
+                  setProductSearchTerm(e.target.value);
+                  setUnitValue('productName', e.target.value, { shouldValidate: true, shouldDirty: true });
+                  setIsProductDropdownOpen(true);
+                }}
+                onFocus={() => setIsProductDropdownOpen(true)}
                 className={unitErrors.productName ? 'border-destructive focus-visible:ring-destructive' : ''}
+                autoComplete="off"
               />
+              {isProductDropdownOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-md shadow-lg max-h-60 overflow-auto">
+                  {isFetchingProducts ? (
+                    <div className="p-3 text-sm text-muted-foreground flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading products...
+                    </div>
+                  ) : filteredProducts.length > 0 ? (
+                    <ul className="py-1">
+                      {filteredProducts.map((p) => (
+                        <li
+                          key={p.id}
+                          className="px-3 py-2 text-sm hover:bg-primary/10 hover:text-primary cursor-pointer transition-colors"
+                          onClick={() => {
+                            setProductSearchTerm(p.name);
+                            setUnitValue('productName', p.name, { shouldValidate: true, shouldDirty: true });
+                            setUnitValue('category', p.category as ManufacturedUnitCategory, { shouldValidate: true, shouldDirty: true });
+                            setUnitValue('warrantyMonths', p.warrantyMonths || 60, { shouldValidate: true, shouldDirty: true });
+                            setIsProductDropdownOpen(false);
+                          }}
+                        >
+                          <div className="font-medium">{p.name}</div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-2">
+                            <span>{p.category}</span>
+                            <span>•</span>
+                            <span>{p.warrantyMonths || 60} months warranty</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="p-3 text-sm text-muted-foreground text-center">
+                      No products found
+                    </div>
+                  )}
+                </div>
+              )}
               {unitErrors.productName && (
-                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.productName.message}</p>
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productName.message}</p>
               )}
             </div>
 
@@ -2411,7 +2502,7 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
             <div className="space-y-1">
               <Label>Category <span className="text-destructive">*</span></Label>
-              <Select value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
+              <Select disabled value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
                 <SelectTrigger className={unitErrors.category ? 'border-destructive' : ''}>
                   <SelectValue placeholder="Select category…" />
                 </SelectTrigger>

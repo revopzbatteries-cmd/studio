@@ -123,11 +123,13 @@ const EMPTY: AdminProduct = {
   idealFor: [],
   specifications: [],
   warranty: '',
+  warrantyMonths: 60,
   installation: '',
   isPublished: false,
   isFeatured: false,
   displayOrder: 0,
 };
+
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -406,17 +408,30 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
           title="Additional Info"
           subtitle="Warranty and installation details shown at the bottom of the product page."
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-1.5">
               <Label htmlFor="pf-warranty" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                <Wrench size={11} /> Warranty
+                <Wrench size={11} /> Warranty Label
               </Label>
               <Input
                 id="pf-warranty"
                 value={data.warranty}
                 onChange={e => setField('warranty', e.target.value)}
                 placeholder="e.g. 2 Years Standard Warranty"
+                className="bg-background/50 border-border/60 focus:border-primary/50"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="pf-warranty-months" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <Wrench size={11} /> Warranty (Months)
+              </Label>
+              <Input
+                id="pf-warranty-months"
+                type="number"
+                min={0}
+                value={data.warrantyMonths}
+                onChange={e => setField('warrantyMonths', Number(e.target.value))}
                 className="bg-background/50 border-border/60 focus:border-primary/50"
               />
             </div>
@@ -433,7 +448,6 @@ export function ProductForm({ initialData, onSave, onCancel, isSaving = false }:
                 className="bg-background/50 border-border/60 focus:border-primary/50"
               />
             </div>
-
           </div>
         </FormSection>
 

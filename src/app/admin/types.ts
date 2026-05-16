@@ -27,7 +27,8 @@ export type AdminProduct = {
   safety: string[];
   idealFor: string[];
   specifications: { key: string; value: string }[];
-  warranty: string;
+  warranty: string;          // e.g. "2 Years"
+  warrantyMonths: number;    // numeric warranty for logic
   installation: string;
   isPublished: boolean;
   isFeatured: boolean;
@@ -45,6 +46,13 @@ export type FirestoreGalleryImage = {
 // Shape returned by Firestore (used by both admin API and public pages)
 export type FirestoreProduct = {
   id: string;
+  // New field names to align with manufactured_units
+  productName: string;       // maps to name
+  power: string;             // maps to powerRating
+  warrantyMonths: number;
+  status: 'Published' | 'Draft';
+  
+  // Existing fields (kept for backward compatibility and website)
   name: string;
   slug: string;
   category: 'inverters' | 'batteries' | 'systems';
@@ -98,10 +106,10 @@ export function firestoreToAdmin(doc: FirestoreProduct): AdminProduct {
 
   return {
     id: doc.id,
-    name: doc.name,
+    name: doc.name || doc.productName || '',
     slug: doc.slug,
     category: doc.category,
-    powerRating: doc.powerRating,
+    powerRating: doc.powerRating || doc.power || '',
     description: doc.shortDescription,
     fullDescription: doc.description,
     image: mainImg?.url ?? '',
@@ -113,8 +121,9 @@ export function firestoreToAdmin(doc: FirestoreProduct): AdminProduct {
     idealFor: doc.idealFor ?? [],
     specifications: Object.entries(doc.technicalSpecifications ?? {}).map(([key, value]) => ({ key, value })),
     warranty: doc.warranty ?? '',
+    warrantyMonths: doc.warrantyMonths ?? 60,
     installation: doc.installation ?? '',
-    isPublished: doc.isPublished ?? false,
+    isPublished: doc.isPublished ?? (doc.status === 'Published'),
     isFeatured: doc.isFeatured ?? false,
     displayOrder: doc.displayOrder ?? 0,
   };
@@ -138,6 +147,13 @@ export function adminToFirestore(
   const mainImg = gallery.find(g => g.isMain) ?? gallery[0];
 
   return {
+    // New fields
+    productName: p.name.trim(),
+    power: p.powerRating.trim(),
+    warrantyMonths: p.warrantyMonths || 0,
+    status: p.isPublished ? 'Published' : 'Draft',
+
+    // Existing fields
     name: p.name.trim(),
     slug: p.slug.trim(),
     category: p.category,
@@ -159,3 +175,4 @@ export function adminToFirestore(
     displayOrder: p.displayOrder,
   };
 }
+

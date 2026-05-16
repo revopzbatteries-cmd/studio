@@ -106,7 +106,7 @@ export const addManufacturedUnitSchema = z.object({
 });
 
 export const productSchema = z.object({
-  name: z.string().trim().min(3, "Name must be at least 3 characters"),
+  name: z.string().trim().min(1, "Product name is required"),
   slug: z.string().trim().min(1, "Slug is required"),
   category: z.enum(['inverters', 'batteries', 'systems']),
   powerRating: z.string().trim().min(1, "Power rating is required"),
@@ -123,11 +123,13 @@ export const productSchema = z.object({
     value: z.string()
   })).optional().default([]),
   warranty: z.string().optional().or(z.literal('')),
+  warrantyMonths: z.number().int().min(0).optional().default(60),
   installation: z.string().optional().or(z.literal('')),
   isPublished: z.boolean(),
   isFeatured: z.boolean(),
   displayOrder: z.number().int().min(0),
 });
+
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type AddAdminFormData = z.infer<typeof addAdminSchema>;
