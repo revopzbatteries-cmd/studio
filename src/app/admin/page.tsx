@@ -112,6 +112,7 @@ export default function AdminPage() {
 
   // Login State
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const { register: registerLogin, handleSubmit: handleLoginSubmit, formState: { errors: loginErrors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' }
@@ -241,13 +242,28 @@ export default function AdminPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  {...registerLogin('password')}
-                  className={`bg-background ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showLoginPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    {...registerLogin('password')}
+                    className={`bg-background pr-10 ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  >
+                    {showLoginPassword ? (
+                      <EyeOff size={16} className="transition-all" />
+                    ) : (
+                      <Eye size={16} className="transition-all" />
+                    )}
+                  </Button>
+                </div>
                 {loginErrors.password && <p className="text-sm text-destructive font-medium">{loginErrors.password.message}</p>}
               </div>
             </CardContent>
