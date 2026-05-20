@@ -63,7 +63,7 @@ function mapWarrantyDoc(docSnapshot: QueryDocumentSnapshot): WarrantyEntry {
 }
 
 export function useWarranties() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, adminProfile, loading: authLoading } = useAuth();
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export function useWarranties() {
       return;
     }
 
-    if (!user) {
+    if (!user || !adminProfile) {
       setWarranties([]);
       setIsLoading(false);
       setError(null);
@@ -101,7 +101,7 @@ export function useWarranties() {
     );
 
     return () => unsubscribe();
-  }, [user, authLoading]);
+  }, [user, adminProfile, authLoading]);
 
   return { warranties, isLoading: authLoading || isLoading, error };
 }

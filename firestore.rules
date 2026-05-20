@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Get user's admin document
+    function getAdminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Helper: Check if user has an active admin profile
+    function isActiveAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+             getAdminDoc().data.status == 'active';
+    }
+
+    // Helper: Check if active admin possesses a specific role
+    function hasRole(roleName) {
+      return isActiveAdmin() && getAdminDoc().data.role == roleName;
+    }
+
+    // Helper: Check if active admin possesses any of a list of roles
+    function hasAnyRole(rolesList) {
+      return isActiveAdmin() && getAdminDoc().data.role in rolesList;
+    }
+
+    // ── 1. ADMINS COLLECTION ─────────────────────────────────────────────────
+    match /admins/{uid} {
+      // Allow any authenticated user to read their own admin document.
+      // This is crucial to prevent "Missing or insufficient permissions" console errors
+      // when public phone-auth users or newly registered users check if they are admins.
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      
+      // Admin creation and role assignments must be managed through secure backend SDKs
+      allow write: if false;
+    }
+
+    // ── 2. PRODUCTS COLLECTION ────────────────────────────────────────────────
+    match /products/{productId} {
+      // Products are public catalog data, so they are readable by everyone.
+      allow read: if true;
+      
+      // Only managers and product managers can create, update, or delete products.
+      allow write: if hasAnyRole(['manager', 'product_manager']);
+    }
+
+    // ── 3. WARRANTIES COLLECTION ──────────────────────────────────────────────
+    match /warranties/{warrantyId} {
+      // Only managers can view or manage all registered warranties.
+      // Note: Public warranty registration is executed securely via serverless backend API routes
+      // which utilize the Admin SDK and bypass these rules, eliminating any direct client writes.
+      allow read, write: if hasRole('manager');
+    }
+
+    // ── 4. MANUFACTURED UNITS COLLECTION ──────────────────────────────────────
+    match /manufactured_units/{serialNumber} {
+      // Only managers and production unit staff can view and manage serial numbers.
+      allow read, write: if hasAnyRole(['manager', 'production_unit']);
+    }
+
+    // ── 5. APP USERS / SYSTEM USERS COLLECTION ───────────────────────────────
+    match /users/{userId} {
+      // Only managers can view and manage system administrators or staff.
+      allow read, write: if hasRole('manager');
+    }
+  }
+}

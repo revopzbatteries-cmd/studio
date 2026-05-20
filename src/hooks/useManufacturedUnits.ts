@@ -8,7 +8,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useManufacturedUnits(searchTerm = '') {
-  const { user, loading: authLoading } = useAuth();
+  const { user, adminProfile, loading: authLoading } = useAuth();
   const [units, setUnits] = useState<ManufacturedUnit[]>([]);
   const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -19,7 +19,7 @@ export function useManufacturedUnits(searchTerm = '') {
       return;
     }
 
-    if (!user) {
+    if (!user || !adminProfile) {
       setUnits([]);
       setIsLoadingUnits(false);
       setError(null);
@@ -41,7 +41,7 @@ export function useManufacturedUnits(searchTerm = '') {
     );
 
     return unsubscribe;
-  }, [user, authLoading]);
+  }, [user, adminProfile, authLoading]);
 
   const filteredUnits = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();

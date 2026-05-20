@@ -88,6 +88,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Firebase user is authenticated — now validate against Firestore
       setUser(firebaseUser);
 
+      // ── Detect if this is a public customer using Phone Authentication ──
+      const isPublicCustomer = firebaseUser.providerData.some(p => p.providerId === 'phone') || !!firebaseUser.phoneNumber;
+
+      if (isPublicCustomer) {
+        setAdminProfile(null);
+        setAccessDenied(false);
+        setLoading(false);
+        return;
+      }
+
       const profile = await fetchAdminProfile(firebaseUser.uid);
 
       if (!profile || profile.status !== "active") {

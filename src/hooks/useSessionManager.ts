@@ -124,6 +124,12 @@ export function useSessionManager(user: User | null, logout: () => Promise<void>
       return;
     }
 
+    // ── Prevent session tracking for public phone-auth users ──
+    const isPublicCustomer = user.providerData.some(p => p.providerId === 'phone') || !!user.phoneNumber;
+    if (isPublicCustomer) {
+      return;
+    }
+
     // 1. Run an immediate check on startup/auth transition
     const { expired, reason } = checkSessionExpiry();
     if (expired && reason) {

@@ -16,13 +16,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/hooks/use-toast';
 import { getManufacturedUnit } from '@/lib/manufacturedUnits';
 import { WarrantySlipModal } from './components/WarrantySlipModal';
-import { RecaptchaVerifier, ConfirmationResult, signInWithPhoneNumber } from 'firebase/auth';
+import { RecaptchaVerifier, ConfirmationResult, signInWithPhoneNumber, signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
 declare global {
   interface Window {
     recaptchaVerifier?: RecaptchaVerifier;
     confirmationResult?: ConfirmationResult;
+    grecaptcha?: any;
   }
 }
 
@@ -132,6 +133,21 @@ export default function WarrantyPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [shakePhone, setShakePhone] = useState(false);
   const [isCaptchaModalOpen, setIsCaptchaModalOpen] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+
+  // Network Diagnostic state
+  const [networkDiagnostic, setNetworkDiagnostic] = useState<{
+    running: boolean;
+    hasRun: boolean;
+    internetConnected: boolean;
+    googleApiConnected: boolean;
+    recaptchaConnected: boolean;
+    adblockerDetected: boolean;
+    localhostDomainValid: boolean;
+  } | null>(null);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [developerBypassActive, setDeveloperBypassActive] = useState(false);
 
   // Resend OTP timer effect
   useEffect(() => {
@@ -172,6 +188,8 @@ export default function WarrantyPage() {
       if (window.confirmationResult) {
         window.confirmationResult = undefined;
       }
+      setConfirmationResult(null);
+      confirmationResultRef.current = null;
       if (window.recaptchaVerifier) {
         try {
           window.recaptchaVerifier.clear();
@@ -182,6 +200,17 @@ export default function WarrantyPage() {
       }
     }
   }, [isRegisterOpen]);
+
+  // ── Clean up any residual Firebase Auth phone session when public page unmounts ──
+  useEffect(() => {
+    return () => {
+      const currentUser = auth.currentUser;
+      const isPhoneUser = currentUser?.providerData.some(p => p.providerId === 'phone') || !!currentUser?.phoneNumber;
+      if (isPhoneUser) {
+        signOut(auth).catch(() => {});
+      }
+    };
+  }, []);
 
   // ── Chip click → autofill + search ────────────────────────────────────────
   const handleChipClick = (serial: string) => {
@@ -305,8 +334,13 @@ export default function WarrantyPage() {
     // Reset OTP UI states before verifying
     setOtpSent(false);
     
-    // Open the Captcha Modal
-    setIsCaptchaModalOpen(true);
+    if (developerBypassActive) {
+      console.log('[Firebase Auth] Developer Bypass active, sending OTP immediately...');
+      await handleSendOTPAfterCaptcha();
+    } else {
+      // Open the Captcha Modal
+      setIsCaptchaModalOpen(true);
+    }
   };
 
   const handleSendOTPAfterCaptcha = async () => {
@@ -316,8 +350,18 @@ export default function WarrantyPage() {
     console.log('[Firebase Auth] OTP request started for phone:', phoneTrimmed);
 
     try {
-      if (!window.recaptchaVerifier) {
-        throw new Error('reCAPTCHA verifier not initialized.');
+      let verifierToUse;
+      if (developerBypassActive) {
+        verifierToUse = {
+          type: 'recaptcha',
+          verify: async () => 'mock-token',
+        };
+        console.log('[Firebase Auth] Using Mock Application Verifier for bypass...');
+      } else {
+        if (!window.recaptchaVerifier) {
+          throw new Error('reCAPTCHA verifier not initialized.');
+        }
+        verifierToUse = window.recaptchaVerifier;
       }
 
       // 4. AUTO FORMAT NUMBER
@@ -325,8 +369,10 @@ export default function WarrantyPage() {
       console.log('[Firebase Auth] signInWithPhoneNumber started for formatted phone:', formattedPhone);
 
       // 5. Firebase call
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, verifierToUse as any);
       window.confirmationResult = confirmation;
+      setConfirmationResult(confirmation);
+      confirmationResultRef.current = confirmation;
       console.log('[Firebase Auth] signInWithPhoneNumber success. Confirmation result saved.');
 
       // 6. Successful OTP send actions
@@ -355,7 +401,9 @@ export default function WarrantyPage() {
       } else if (error?.code === 'auth/too-many-requests') {
         errMsg = 'Too many requests. Please try again later.';
       } else if (error?.code === 'auth/network-request-failed') {
-        errMsg = 'Network error. Please check your internet connection.';
+        errMsg = 'Network request failed. This is often caused by adblockers, VPN/firewalls, or localhost API key domain restrictions. Opening diagnostics...';
+        // Auto-run connection diagnostics
+        runDiagnostics();
       } else if (error?.code === 'auth/captcha-check-failed') {
         errMsg = 'reCAPTCHA verification failed. Please try again.';
       } else if (error?.code === 'auth/internal-error') {
@@ -381,70 +429,202 @@ export default function WarrantyPage() {
     }
   };
 
+
   // Keep handleSendOTPAfterCaptcha in a ref to avoid stale closures in reCAPTCHA callback
   const handleSendOtpRef = useRef(handleSendOTPAfterCaptcha);
   useEffect(() => {
     handleSendOtpRef.current = handleSendOTPAfterCaptcha;
   }, [handleSendOTPAfterCaptcha]);
 
-  // ── reCAPTCHA Callback Ref for deterministic initialization and cleanup ──
-  const recaptchaContainerRef = useCallback((element: HTMLDivElement | null) => {
-    if (!element) {
-      // Element is unmounting — clean up the verifier instance
-      if (window.recaptchaVerifier) {
-        console.log('[Firebase Auth] Unmounting: Clearing recaptchaVerifier.');
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (e) {
-          console.warn('[Firebase Auth] Error clearing verifier on unmount:', e);
-        }
-        window.recaptchaVerifier = undefined;
-      }
+  // ── State-governed reCAPTCHA Verification Setup and Cleanup ──
+  useEffect(() => {
+    if (!isCaptchaModalOpen) return;
+    if (developerBypassActive) {
+      console.log('[Firebase Auth] Developer Bypass active, skipping real RecaptchaVerifier.');
       return;
     }
 
-    console.log('[Firebase Auth] Recaptcha element mounted. Initializing verifier...');
+    let active = true;
 
-    // Clear any existing stale verifier
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {
-        console.warn('[Firebase Auth] Error clearing stale verifier:', e);
+    const setupVerifier = async () => {
+      // 80ms delay to let the dialog paint fully and render the #recaptcha-container div
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      if (!active) return;
+
+      const element = document.getElementById('recaptcha-container');
+      if (!element) {
+        console.warn('[Firebase Auth] Recaptcha container not found in DOM.');
+        return;
       }
-      window.recaptchaVerifier = undefined;
+
+      // ── Audit: Check if the element already contains Google's iframe nodes ──
+      if (element.children.length > 0) {
+        console.log('[Firebase Auth] Container already has active widget nodes. Skipping duplicate setup.');
+        return;
+      }
+
+      // Clear any pre-existing verifier instance
+      if (window.recaptchaVerifier) {
+        console.log('[Firebase Auth] Destroying stale verifier prior to rendering.');
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (e) {
+          console.warn('[Firebase Auth] Ignored verifier clear error:', e);
+        }
+        window.recaptchaVerifier = undefined;
+      }
+
+      // Purge residual overlays from document body
+      if (typeof document !== 'undefined') {
+        const bodyWrappers = document.querySelectorAll('body > div[style*="z-index: 2000000000"], body > iframe[src*="recaptcha"]');
+        bodyWrappers.forEach(node => {
+          try {
+            node.remove();
+            console.log('[Firebase Auth] Stranded reCAPTCHA body overlay removed prior to new render.');
+          } catch (e) {}
+        });
+      }
+
+      element.innerHTML = '';
+
+      try {
+        console.log('[Firebase Auth] Creating fresh RecaptchaVerifier instance.');
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, element, {
+          size: 'normal',
+          callback: async () => {
+            console.log('[Firebase Auth] reCAPTCHA successfully solved.');
+            await handleSendOtpRef.current();
+          },
+          'expired-callback': () => {
+            console.warn('[Firebase Auth] reCAPTCHA token expired.');
+            toast({
+              title: 'Verification Expired',
+              description: 'Captcha verification has expired. Please verify again.',
+              variant: 'destructive',
+            });
+          }
+        });
+
+        await window.recaptchaVerifier.render();
+        console.log('[Firebase Auth] reCAPTCHA successfully rendered in DOM.');
+      } catch (err: any) {
+        console.error('[Firebase Auth] Failed to initialize RecaptchaVerifier:', err);
+        toast({
+          title: 'Verification Error',
+          description: 'Failed to initialize security captcha. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    setupVerifier();
+
+    return () => {
+      active = false;
+      // Clean up verifier when modal closes or unmounts
+      if (window.recaptchaVerifier) {
+        console.log('[Firebase Auth] Cleaning up verifier on modal close.');
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (e) {
+          console.warn('[Firebase Auth] Error clearing verifier:', e);
+        }
+        window.recaptchaVerifier = undefined;
+      }
+
+      // Purge overlays
+      if (typeof document !== 'undefined') {
+        const bodyWrappers = document.querySelectorAll('body > div[style*="z-index: 2000000000"], body > iframe[src*="recaptcha"]');
+        bodyWrappers.forEach(node => {
+          try { node.remove(); } catch {}
+        });
+      }
+    };
+  }, [isCaptchaModalOpen, developerBypassActive, toast]);
+
+  // ── Network Diagnostics and Bypassing logic ────────────────────────────────
+  const runDiagnostics = async () => {
+    setNetworkDiagnostic({
+      running: true,
+      hasRun: false,
+      internetConnected: false,
+      googleApiConnected: false,
+      recaptchaConnected: false,
+      adblockerDetected: false,
+      localhostDomainValid: false,
+    });
+    setIsDiagnosticOpen(true);
+
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    let identityApiOk = false;
+    let recaptchaApiOk = false;
+    let adblockerFound = false;
+
+    // Test connection to Google Identity API
+    try {
+      await fetch('https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode', {
+        method: 'POST',
+        mode: 'no-cors',
+      });
+      identityApiOk = true;
+    } catch (e) {
+      console.warn('[Diagnostics] Google Auth API blocked:', e);
+      identityApiOk = false;
+      adblockerFound = true;
     }
 
+    // Test connection to Google reCAPTCHA
     try {
-      // Pass the HTML element reference directly to prevent DOM ID selection races
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, element, {
-        size: 'normal',
-        callback: async () => {
-          console.log('[Firebase Auth] reCAPTCHA successfully solved.');
-          await handleSendOtpRef.current();
-        },
-        'expired-callback': () => {
-          console.warn('[Firebase Auth] reCAPTCHA token expired.');
-          toast({
-            title: 'Verification Expired',
-            description: 'Captcha verification has expired. Please verify again.',
-            variant: 'destructive',
-          });
-        }
-      });
+      await fetch('https://www.google.com/recaptcha/api.js', { mode: 'no-cors' });
+      recaptchaApiOk = true;
+    } catch (e) {
+      console.warn('[Diagnostics] reCAPTCHA script blocked:', e);
+      recaptchaApiOk = false;
+      adblockerFound = true;
+    }
 
-      window.recaptchaVerifier.render().then((widgetId) => {
-        console.log('[Firebase Auth] reCAPTCHA widget rendered successfully. Widget ID:', widgetId);
-      });
-    } catch (err: any) {
-      console.error('[Firebase Auth] Failed to initialize RecaptchaVerifier:', err);
+    // Check if grecaptcha was blocked from loading
+    if (typeof window !== 'undefined' && !window.grecaptcha) {
+      adblockerFound = true;
+    }
+
+    const isLocalhost = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    setNetworkDiagnostic({
+      running: false,
+      hasRun: true,
+      internetConnected: isOnline,
+      googleApiConnected: identityApiOk,
+      recaptchaConnected: recaptchaApiOk,
+      adblockerDetected: adblockerFound,
+      localhostDomainValid: isLocalhost,
+    });
+  };
+
+  const enableDeveloperBypass = () => {
+    try {
+      auth.settings.appVerificationDisabledForTesting = true;
+      setDeveloperBypassActive(true);
       toast({
-        title: 'Verification Error',
-        description: 'Failed to initialize security captcha. Please try again.',
+        title: '🛠️ Developer Mode Active',
+        description: 'Firebase App Verification has been bypassed for localhost testing. You can now verify numbers instantly without sending actual SMS.',
+      });
+      setIsDiagnosticOpen(false);
+      
+      // Automatically trigger OTP sending
+      setTimeout(() => {
+        handleSendOTPAfterCaptcha();
+      }, 300);
+    } catch (err: any) {
+      console.error('[Firebase Auth] Failed to enable testing mode:', err);
+      toast({
+        title: 'Bypass Failed',
+        description: err.message,
         variant: 'destructive',
       });
     }
-  }, [toast]);
+  };
 
   const handleVerifyOTP = async () => {
     if (!regForm.otp || regForm.otp.length < 6) {
@@ -452,33 +632,55 @@ export default function WarrantyPage() {
       return;
     }
     
-    if (!window.confirmationResult) {
+    const activeConfirmationResult = window.confirmationResult || confirmationResult || confirmationResultRef.current;
+    
+    if (!activeConfirmationResult) {
       toast({ title: 'Error', description: 'Please request an OTP first.', variant: 'destructive' });
       return;
     }
 
     setIsVerifying(true);
     try {
-      await window.confirmationResult.confirm(regForm.otp);
+      await activeConfirmationResult.confirm(regForm.otp);
       setPhoneVerified(true);
+      
+      // Clean up the temporary Firebase Auth session immediately for the public customer
+      await signOut(auth).catch((err) => {
+        console.warn('[Firebase Auth] Immediate signout failed:', err);
+      });
+
       toast({
         title: '✅ Verification Successful',
         description: 'Your phone number has been securely verified.',
       });
       setRegErrors(prev => ({ ...prev, otp: '', phone: '' }));
     } catch (error: any) {
+      console.warn('[Firebase Auth] OTP verification failed. Code:', error?.code, 'Message:', error?.message);
+      
       let errMsg = 'Failed to verify OTP. Please try again.';
-      if (error.code === 'auth/invalid-verification-code') {
+      const errorCode = error?.code || '';
+      
+      if (errorCode === 'auth/invalid-verification-code') {
         errMsg = 'The 6-digit code is incorrect. Please check and try again.';
-      } else if (error.code === 'auth/code-expired') {
+      } else if (errorCode === 'auth/code-expired') {
         errMsg = 'This OTP has expired. Please request a new one.';
-      } else if (error.code === 'auth/too-many-requests') {
+      } else if (errorCode === 'auth/session-expired') {
+        errMsg = 'The verification session has expired. Please request a new OTP code.';
+      } else if (errorCode === 'auth/too-many-requests') {
         errMsg = 'Too many attempts. Please try again later.';
-      } else if (error.code === 'auth/invalid-phone-number') {
+      } else if (errorCode === 'auth/invalid-phone-number') {
         errMsg = 'The phone number format is invalid.';
-      } else if (error.code === 'auth/network-request-failed') {
-        errMsg = 'Network error. Please check your internet connection.';
+      } else if (errorCode === 'auth/network-request-failed') {
+        // Double check if this was a false positive due to local network interceptors or rapid retry
+        if (activeConfirmationResult) {
+          errMsg = 'The verification code format or session is invalid. Please double check the 6-digit OTP code and try again.';
+        } else {
+          errMsg = 'Network connection issue. Please check your internet connection and try again.';
+        }
+      } else if (error?.message?.includes('invalid') || error?.message?.includes('incorrect')) {
+        errMsg = 'The 6-digit code is incorrect. Please check and try again.';
       }
+
       toast({
         title: 'Verification Failed',
         description: errMsg,
@@ -540,10 +742,15 @@ export default function WarrantyPage() {
       setOtpSent(false);
       setResendTimer(0);
       window.confirmationResult = undefined;
+      setConfirmationResult(null);
+      confirmationResultRef.current = null;
       if (window.recaptchaVerifier) {
         try { window.recaptchaVerifier.clear(); } catch {}
         window.recaptchaVerifier = undefined;
       }
+
+      // ── Clean up any remaining Firebase Auth session for public security ──
+      await signOut(auth).catch(() => {});
 
       toast({
         title: '🎉 Warranty Registered!',
@@ -1153,7 +1360,6 @@ export default function WarrantyPage() {
           {/* reCAPTCHA Widget Center Container */}
           <div className="w-full flex justify-center py-5 select-none min-h-[78px]">
             <div 
-              ref={recaptchaContainerRef}
               id="recaptcha-container" 
               className="mx-auto overflow-hidden rounded-md border border-white/5 shadow-inner"
             ></div>
@@ -1162,6 +1368,123 @@ export default function WarrantyPage() {
           <p className="text-[10px] text-muted-foreground/60 leading-normal max-w-[280px]">
             This verification is protected by Firebase reCAPTCHA and complies with our privacy policy and security protocols.
           </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Network Diagnostics Modal ────────────────────────────────────── */}
+      <Dialog open={isDiagnosticOpen} onOpenChange={setIsDiagnosticOpen}>
+        <DialogContent className="max-w-md bg-black/90 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 rounded-3xl text-left max-md:w-[calc(100vw-32px)] max-md:rounded-2xl">
+          <DialogHeader className="space-y-1.5 border-b border-white/5 pb-4">
+            <DialogTitle className="text-xl font-headline font-bold text-white flex items-center gap-2">
+              <ShieldAlert className="text-amber-500 animate-pulse" size={24} />
+              Network Connection Diagnostics
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-xs leading-normal">
+              Firebase Authentication failed to connect to Google servers. Let&apos;s find out why:
+            </DialogDescription>
+          </DialogHeader>
+
+          {networkDiagnostic?.running ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-4 text-center">
+              <Loader2 className="animate-spin text-primary" size={40} />
+              <p className="text-sm text-muted-foreground animate-pulse">Running network tests...</p>
+            </div>
+          ) : (
+            <div className="py-6 space-y-4">
+              <div className="space-y-3">
+                <DiagnosticRow 
+                  label="Internet Connection" 
+                  status={networkDiagnostic?.internetConnected ?? false} 
+                  successMsg="Online" 
+                  failMsg="Offline" 
+                />
+                <DiagnosticRow 
+                  label="Google Auth API (identitytoolkit)" 
+                  status={networkDiagnostic?.googleApiConnected ?? false} 
+                  successMsg="Accessible" 
+                  failMsg="Blocked / Offline" 
+                />
+                <DiagnosticRow 
+                  label="Google reCAPTCHA Service" 
+                  status={networkDiagnostic?.recaptchaConnected ?? false} 
+                  successMsg="Accessible" 
+                  failMsg="Blocked / Offline" 
+                />
+                <DiagnosticRow 
+                  label="Browser Adblocker Status" 
+                  status={!(networkDiagnostic?.adblockerDetected ?? false)} 
+                  successMsg="Not Detected" 
+                  failMsg="Potential Adblocker Active" 
+                  invertColor
+                />
+                <DiagnosticRow 
+                  label="Environment Host" 
+                  status={networkDiagnostic?.localhostDomainValid ?? false} 
+                  successMsg="Localhost (Development)" 
+                  failMsg="External / Deployed Domain" 
+                  isNeutral
+                />
+              </div>
+
+              {/* Troubleshooting guides */}
+              <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-xs space-y-2 text-muted-foreground">
+                <p className="font-semibold text-white">💡 Troubleshooting Steps:</p>
+                {networkDiagnostic?.adblockerDetected && (
+                  <p className="flex items-start gap-1.5 leading-normal">
+                    <span className="text-amber-400 font-bold shrink-0">•</span>
+                    <span>Disable adblockers (like Brave Shield, uBlock Origin, or AdBlock) for this site, as they block Google Authentication scripts.</span>
+                  </p>
+                )}
+                {!networkDiagnostic?.googleApiConnected && (
+                  <p className="flex items-start gap-1.5 leading-normal">
+                    <span className="text-amber-400 font-bold shrink-0">•</span>
+                    <span>Check your VPN or firewall settings. Your local network may be restricting outgoing traffic to <code>*.googleapis.com</code>.</span>
+                  </p>
+                )}
+                <p className="flex items-start gap-1.5 leading-normal">
+                  <span className="text-amber-400 font-bold shrink-0">•</span>
+                  <span>Ensure <code>localhost</code> is added to <strong>Authorized Domains</strong> in Firebase Console under Authentication &gt; Settings.</span>
+                </p>
+              </div>
+
+              {/* Localhost Developer Bypass Option */}
+              {networkDiagnostic?.localhostDomainValid && (
+                <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-primary-foreground flex items-center gap-1.5">
+                      🛠️ Enable Local Dev Test Mode
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-normal">
+                      Since you are on <code>localhost</code>, you can bypass real SMS/reCAPTCHA network calls. Firebase will let you enter mock test numbers instantly!
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={enableDeveloperBypass} 
+                    className="w-full bg-primary hover:bg-primary/90 text-white font-medium text-xs py-2 h-auto"
+                  >
+                    Bypass App Verification for testing
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="border-t border-white/5 pt-4 flex gap-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => setIsDiagnosticOpen(false)} 
+              className="flex-1 text-xs hover:bg-white/5 h-9"
+            >
+              Close
+            </Button>
+            <Button 
+              onClick={runDiagnostics} 
+              disabled={networkDiagnostic?.running}
+              className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs h-9"
+            >
+              <RefreshCw size={12} className="mr-1.5" /> Re-run Tests
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -1194,6 +1517,36 @@ function InfoRow({
           {value}
         </p>
       </div>
+    </div>
+  );
+}
+
+// ── Helper Diagnostic Row Component ───────────────────────────────────────────
+function DiagnosticRow({
+  label, status, successMsg, failMsg, invertColor = false, isNeutral = false
+}: {
+  label: string;
+  status: boolean;
+  successMsg: string;
+  failMsg: string;
+  invertColor?: boolean;
+  isNeutral?: boolean;
+}) {
+  const isOk = invertColor ? !status : status;
+  let colorClass = 'text-green-400 bg-green-500/10 border-green-500/25';
+  
+  if (isNeutral) {
+    colorClass = 'text-blue-400 bg-blue-500/10 border-blue-500/25';
+  } else if (!isOk) {
+    colorClass = 'text-red-400 bg-red-500/10 border-red-500/25';
+  }
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-white/2">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${colorClass}`}>
+        {isNeutral ? successMsg : (status ? successMsg : failMsg)}
+      </span>
     </div>
   );
 }

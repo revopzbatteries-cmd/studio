@@ -5,7 +5,7 @@ import { subscribeToAppUsers, type AppUser } from '@/lib/appUsers';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useAppUsers(searchTerm = '') {
-  const { user, loading: authLoading } = useAuth();
+  const { user, adminProfile, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -16,7 +16,7 @@ export function useAppUsers(searchTerm = '') {
       return;
     }
 
-    if (!user) {
+    if (!user || !adminProfile) {
       setUsers([]);
       setIsLoadingUsers(false);
       setError(null);
@@ -38,7 +38,7 @@ export function useAppUsers(searchTerm = '') {
     );
 
     return unsubscribe;
-  }, [user, authLoading]);
+  }, [user, adminProfile, authLoading]);
 
   const filteredUsers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
