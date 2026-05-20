@@ -39,6 +39,7 @@ import {
   Globe,
   Star,
   Filter,
+  QrCode,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +54,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProductForm } from './components/ProductForm';
 import { ProductThumbnail } from './components/ProductThumbnail';
 import { EditProfileModal } from './components/EditProfileModal';
+import { BarcodeScanner } from './components/BarcodeScanner';
+import { BulkAddUnitsModal } from '@/app/admin/components/BulkAddUnitsModal';
 import type { AdminProduct } from './types';
 import { firestoreToAdmin, adminToFirestore } from './types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -109,6 +112,7 @@ export default function AdminPage() {
 
   // Login State
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const { register: registerLogin, handleSubmit: handleLoginSubmit, formState: { errors: loginErrors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' }
@@ -238,13 +242,28 @@ export default function AdminPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  {...registerLogin('password')}
-                  className={`bg-background ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showLoginPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    {...registerLogin('password')}
+                    className={`bg-background pr-10 ${loginErrors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  >
+                    {showLoginPassword ? (
+                      <EyeOff size={16} className="transition-all" />
+                    ) : (
+                      <Eye size={16} className="transition-all" />
+                    )}
+                  </Button>
+                </div>
                 {loginErrors.password && <p className="text-sm text-destructive font-medium">{loginErrors.password.message}</p>}
               </div>
             </CardContent>
@@ -1357,19 +1376,32 @@ function ProductSection({ permissions }: { permissions: string[] }) {
 
   const toggleFeatured = async (product: FirestoreProduct) => {
     const newFeatured = !product.isFeatured;
-    // Optimistic UI: enforce single-featured on the client
+
+    if (newFeatured) {
+      const currentFeaturedCount = products.filter(p => p.isFeatured).length;
+      if (currentFeaturedCount >= 5) {
+        toast({ title: 'Limit Exceeded', description: 'You can only feature up to 5 products.', variant: 'destructive' });
+        return;
+      }
+    }
+
+    // Optimistic UI
     setProducts(prev => prev.map(p => ({
       ...p,
-      isFeatured: p.id === product.id ? newFeatured : (newFeatured ? false : p.isFeatured),
+      isFeatured: p.id === product.id ? newFeatured : p.isFeatured,
     })));
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated.');
-      await fetch(`/api/products/${product.id}`, {
+      const res = await fetch(`/api/products/${product.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ isFeatured: newFeatured }),
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to update.');
+      }
     } catch (err: any) {
       // Rollback
       setProducts(prev => prev.map(p => ({ ...p, isFeatured: p.id === product.id ? product.isFeatured : p.isFeatured })));
@@ -1427,7 +1459,7 @@ function ProductSection({ permissions }: { permissions: string[] }) {
               </DialogDescription>
             </DialogHeader>
           </div>
-          
+
           <ProductForm
             key={editingProduct?.id ?? 'new'}
             initialData={editingProduct ? firestoreToAdmin(editingProduct) : undefined}
@@ -2081,9 +2113,38 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
   const canMarkFake = hasPermission(permissions, 'mark_fake');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [fakeFilter, setFakeFilter] = useState<'all' | 'genuine' | 'fake'>('all');
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [statusFilter, setStatusFilter] = useState("All Status");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [products, setProducts] = useState<FirestoreProduct[]>([]);
+  const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+  const [lastScannedUnit, setLastScannedUnit] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    if (isDialogOpen && products.length === 0) {
+      const fetchProducts = async () => {
+        setIsFetchingProducts(true);
+        try {
+          const idToken = await auth.currentUser?.getIdToken();
+          const res = await fetch('/api/products', { headers: { Authorization: `Bearer ${idToken}` } });
+          if (!res.ok) throw new Error('Failed to fetch products');
+          const data = await res.json();
+          setProducts(data.products ?? []);
+        } catch (err) {
+          console.error('[ManufacturedUnits] Error fetching products:', err);
+        } finally {
+          setIsFetchingProducts(false);
+        }
+      };
+      fetchProducts();
+    }
+  }, [isDialogOpen, products.length]);
+
+
 
   // ── Fake Product Modal state ──────────────────────────────────────────────
   const [fakeModalOpen, setFakeModalOpen] = useState(false);
@@ -2096,12 +2157,23 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
 
   const { filteredUnits: rawFilteredUnits, isLoadingUnits, error: unitsError } = useManufacturedUnits(searchTerm);
 
-  // Apply fake/genuine filter on top of search filter
+  // Apply category and status filters on top of search filter
   const filteredUnits = useMemo(() => {
-    if (fakeFilter === 'fake') return rawFilteredUnits.filter(u => u.isFakeProduct === true);
-    if (fakeFilter === 'genuine') return rawFilteredUnits.filter(u => u.isFakeProduct !== true);
-    return rawFilteredUnits;
-  }, [rawFilteredUnits, fakeFilter]);
+    return rawFilteredUnits.filter((unit) => {
+      const matchesStatus = statusFilter === 'All Status'
+        ? true
+        : statusFilter === 'False Product'
+          ? unit.isFakeProduct === true
+          : unit.status === statusFilter && !unit.isFakeProduct;
+
+      const matchesCategory =
+        categoryFilter === "All Categories"
+          ? true
+          : unit.category === categoryFilter;
+
+      return matchesStatus && matchesCategory;
+    });
+  }, [rawFilteredUnits, statusFilter, categoryFilter]);
   const defaultUnitFormValues: AddManufacturedUnitFormData = {
     productName: '',
     productNumber: '',
@@ -2125,6 +2197,22 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
     mode: 'onChange',
     defaultValues: defaultUnitFormValues,
   });
+
+  useEffect(() => {
+    if (!lastScannedUnit) return;
+
+    setUnitValue('productNumber', lastScannedUnit.toUpperCase(), { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    
+    toast({
+      title: "Scan Successful",
+      description: `Detected: ${lastScannedUnit}`,
+    });
+
+    setLastScannedUnit(null);
+  }, [lastScannedUnit, setUnitValue, toast]);
 
   const watchedCategory = watchUnitForm('category');
 
@@ -2207,6 +2295,12 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
         description: 'Your role cannot add manufactured units.',
         variant: 'destructive',
       });
+      return;
+    }
+
+    const matchedProduct = products.find(p => p.name === data.productName);
+    if (!matchedProduct) {
+      setUnitError('productName', { type: 'manual', message: 'Please select a valid product from the dropdown list.' });
       return;
     }
 
@@ -2311,25 +2405,53 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               className="pl-9 w-48"
             />
           </div>
-          {/* Fake filter */}
-          <Select value={fakeFilter} onValueChange={v => setFakeFilter(v as 'all' | 'genuine' | 'fake')}>
+          {/* Category filter */}
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-36 gap-1">
               <Filter size={14} className="text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="all">All Units</SelectItem>
-              <SelectItem value="genuine">Genuine</SelectItem>
-              <SelectItem value="fake">Fake Products</SelectItem>
+              <SelectItem value="All Categories">All Categories</SelectItem>
+              <SelectItem value="Inverter">Inverter</SelectItem>
+              <SelectItem value="Battery">Battery</SelectItem>
+              <SelectItem value="Solar">Solar</SelectItem>
+            </SelectContent>
+          </Select>
+          {/* Status filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36 gap-1">
+              <Filter size={14} className="text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="All Status">All Status</SelectItem>
+              <SelectItem value="Ready">Ready</SelectItem>
+              <SelectItem value="Registered">Registered</SelectItem>
+              <SelectItem value="False Product">False Product</SelectItem>
             </SelectContent>
           </Select>
           {canAdd && (
-            <Button onClick={openAddDialog} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
-              <Plus size={16} className="mr-2" /> Add Unit
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={openAddDialog} className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 shrink-0" disabled={isLoadingUnits}>
+                <Plus size={16} className="mr-2" /> Add Unit
+              </Button>
+              <Button onClick={() => setIsBulkDialogOpen(true)} className="bg-primary hover:bg-primary/90 shrink-0" disabled={isLoadingUnits}>
+                <Plus size={16} className="mr-2" /> Bulk Add
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>
+
+      {/* ── Bulk Add Dialog ────────────────────────────────────────────────── */}
+      <BulkAddUnitsModal
+        open={isBulkDialogOpen}
+        onOpenChange={setIsBulkDialogOpen}
+        products={products}
+        isFetchingProducts={isFetchingProducts}
+        adminProfile={adminProfile}
+      />
 
       {/* ── Add Unit Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={isDialogOpen} onOpenChange={open => { if (!open) closeDialog(); }}>
@@ -2346,14 +2468,56 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
           <form onSubmit={handleUnitSubmit(onAddUnitSubmit)} className="space-y-4 py-2">
             <div className="space-y-1">
               <Label htmlFor="unit-product-name">Product Name <span className="text-destructive">*</span></Label>
-              <Input
-                id="unit-product-name"
-                placeholder="e.g. RZ 1350+"
-                {...registerUnit('productName')}
-                className={unitErrors.productName ? 'border-destructive focus-visible:ring-destructive' : ''}
-              />
+              <Select
+                onValueChange={(val) => {
+                  const p = products.find(prod => prod.name === val);
+                  if (p) {
+                    setUnitValue('productName', p.name, { shouldValidate: true, shouldDirty: true });
+                    
+                    // Map product category to unit category
+                    const pCat = p.category?.toLowerCase() || '';
+                    let mappedCat: ManufacturedUnitCategory = 'Other';
+                    if (pCat.includes('inverter')) mappedCat = 'Inverter';
+                    else if (pCat.includes('batter')) mappedCat = 'Battery';
+                    else if (pCat.includes('system') || pCat.includes('solar')) mappedCat = 'Solar';
+                    
+                    setUnitValue('category', mappedCat, { shouldValidate: true, shouldDirty: true });
+                    setUnitValue('warrantyMonths', p.warrantyMonths || 60, { shouldValidate: true, shouldDirty: true });
+                  }
+                }}
+                value={watchUnitForm('productName')}
+              >
+                <SelectTrigger
+                  id="unit-product-name"
+                  className={unitErrors.productName ? 'border-destructive focus:ring-destructive' : ''}
+                >
+                  <SelectValue placeholder={isFetchingProducts ? "Loading products..." : "Select a product model"} />
+                </SelectTrigger>
+                <SelectContent className="bg-popover max-h-60">
+                  {isFetchingProducts ? (
+                    <div className="p-2 text-sm text-muted-foreground flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading...
+                    </div>
+                  ) : products.length > 0 ? (
+                    products.map((p) => (
+                      <SelectItem key={p.id} value={p.name}>
+                        <div className="flex flex-col text-left">
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-tight">
+                            {p.category} • {p.powerRating || p.power} • {p.warrantyMonths || 60}M Warranty
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-sm text-muted-foreground text-center">No products found</div>
+                  )}
+                </SelectContent>
+              </Select>
               {unitErrors.productName && (
-                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.productName.message}</p>
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertTriangle size={11} /> {unitErrors.productName.message}
+                </p>
               )}
             </div>
 
@@ -2371,30 +2535,49 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
                       }
                     },
                   })}
-                  className={`font-mono pr-10 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  className={`font-mono pr-12 ${unitErrors.productNumber ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {isCheckingDuplicate && (
-                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                )}
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {isCheckingDuplicate && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                    onClick={() => setIsScannerOpen(true)}
+                    title="Scan Barcode / QR Code"
+                  >
+                    <QrCode size={18} />
+                  </Button>
+                </div>
               </div>
+
+              {/* Barcode Scanner Modal */}
+              <BarcodeScanner 
+                open={isScannerOpen} 
+                onOpenChange={setIsScannerOpen}
+                onScan={(val) => setLastScannedUnit(val)}
+              />
               {unitErrors.productNumber
                 ? <p className="text-xs text-destructive flex items-center gap-1 mt-1"><X size={11} />{unitErrors.productNumber.message}</p>
-                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, and hyphens only.</p>
+                : <p className="text-xs text-muted-foreground/70 mt-1">Letters, numbers, hyphens, and underscores only.</p>
               }
             </div>
 
             <div className="space-y-1">
               <Label>Category <span className="text-destructive">*</span></Label>
-              <Select value={watchedCategory} onValueChange={value => setUnitValue('category', value as ManufacturedUnitCategory, { shouldDirty: true, shouldValidate: true })}>
-                <SelectTrigger className={unitErrors.category ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select category…" />
+              <Select disabled value={watchedCategory}>
+                <SelectTrigger className={unitErrors.category ? 'border-destructive opacity-80' : 'opacity-80 cursor-not-allowed'}>
+                  <SelectValue placeholder="Product category" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
                   {UNIT_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
               {unitErrors.category && (
-                <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{unitErrors.category.message}</p>
+                <p className="text-xs text-destructive flex items-center gap-1"><AlertTriangle size={11} />{unitErrors.category.message}</p>
               )}
             </div>
 
@@ -2417,13 +2600,15 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
               <Input
                 id="unit-warranty"
                 type="number"
-                min={1}
-                step={1}
+                readOnly
+                disabled
                 {...registerUnit('warrantyMonths')}
-                className={unitErrors.warrantyMonths ? 'border-destructive focus-visible:ring-destructive' : ''}
+                className={`bg-muted/50 opacity-80 cursor-not-allowed ${unitErrors.warrantyMonths ? 'border-destructive' : ''}`}
               />
               {unitErrors.warrantyMonths && (
-                <p className="text-xs text-destructive">{unitErrors.warrantyMonths.message}</p>
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertTriangle size={11} /> {unitErrors.warrantyMonths.message}
+                </p>
               )}
             </div>
 
@@ -2547,59 +2732,51 @@ function ManufacturedUnitsSection({ permissions, adminProfile }: { permissions: 
             ) : filteredUnits.length > 0 ? filteredUnits.map(unit => {
               const isFake = unit.isFakeProduct === true;
               return (
-              <TableRow key={unit.id} className={isFake ? 'bg-red-500/5' : ''}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    {unit.productName}
-                    {isFake && (
-                      <span title={unit.fakeReason || 'Flagged as counterfeit'}>
-                        <ShieldAlert size={14} className="text-red-500" />
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
-                <TableCell className="text-muted-foreground">{unit.category}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
-                <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
-                <TableCell>{unitStatusBadge(unit)}</TableCell>
-                {canMarkFake && (
-                  <TableCell className="text-right">
-                    {isFake ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-green-600 text-green-500 hover:bg-green-600 hover:text-white h-8 text-xs"
-                        onClick={() => openRemoveFakeModal(unit)}
-                      >
-                        <ShieldOff size={13} className="mr-1" /> Remove Fake Flag
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-red-700 text-red-500 hover:bg-red-700 hover:text-white h-8 text-xs"
-                        onClick={() => openFakeModal(unit)}
-                      >
-                        <ShieldAlert size={13} className="mr-1" /> Mark Fake
-                      </Button>
-                    )}
+                <TableRow key={unit.id} className={isFake ? 'bg-red-500/5' : ''}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {unit.productName}
+                      {isFake && (
+                        <span title={unit.fakeReason || 'Flagged as counterfeit'}>
+                          <ShieldAlert size={14} className="text-red-500" />
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
-                )}
-              </TableRow>
-            );
+                  <TableCell className="font-mono text-primary font-bold">{unit.productNumber}</TableCell>
+                  <TableCell className="text-muted-foreground">{unit.category}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{formatDate(unit.manufacturedDate)}</TableCell>
+                  <TableCell className="text-center">{unit.warrantyMonths}</TableCell>
+                  <TableCell>{unitStatusBadge(unit)}</TableCell>
+                  {canMarkFake && (
+                    <TableCell className="text-right">
+                      {isFake ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-green-600 text-green-500 hover:bg-green-600 hover:text-white h-8 text-xs"
+                          onClick={() => openRemoveFakeModal(unit)}
+                        >
+                          <ShieldOff size={13} className="mr-1" /> Remove Fake Flag
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-700 text-red-500 hover:bg-red-700 hover:text-white h-8 text-xs"
+                          onClick={() => openFakeModal(unit)}
+                        >
+                          <ShieldAlert size={13} className="mr-1" /> Mark Fake
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
             }) : (
               <TableRow>
                 <TableCell colSpan={canMarkFake ? 7 : 6} className="h-32 text-center text-muted-foreground">
-                  {fakeFilter === 'fake'
-                    ? 'No counterfeit units found.'
-                    : fakeFilter === 'genuine'
-                    ? 'No genuine units found.'
-                    : searchTerm
-                    ? `No units found matching "${searchTerm}".`
-                    : canAdd
-                      ? 'No manufactured units yet. Click "Add Unit" to get started.'
-                      : 'No manufactured units have been recorded yet.'}
+                  No manufactured units found.
                 </TableCell>
               </TableRow>
             )}

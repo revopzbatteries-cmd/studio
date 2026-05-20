@@ -10,6 +10,8 @@ import {
 import { onAuthStateChanged, User, signOut as firebaseSignOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { fetchAdminProfile, AdminProfile } from "@/lib/adminService";
+import { checkSessionExpiry, clearSessionStorage } from "@/lib/session";
+import { useSessionManager } from "@/hooks/useSessionManager";
 
 // ── Context shape ─────────────────────────────────────────────────────────────
 interface AuthContextType {
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      clearSessionStorage();
       await firebaseSignOut(auth);
       setAdminProfile(null);
       setAccessDenied(false);
@@ -52,6 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("[Auth] Error signing out:", error);
     }
   }, []);
+
+  // Hook to track user activity, check inactivity timeouts, and manage multi-tab synchronization
+  useSessionManager(user, logout);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -66,8 +72,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // ── Startup check: Check session expiration before loading profile ──
+      const { expired, reason } = checkSessionExpiry();
+      if (expired) {
+        console.warn(`[Auth] Startup session expired: ${reason}. Forcing logout.`);
+        clearSessionStorage();
+        await firebaseSignOut(auth).catch(() => {});
+        setUser(null);
+        setAdminProfile(null);
+        setAccessDenied(false);
+        setLoading(false);
+        return;
+      }
+
       // Firebase user is authenticated — now validate against Firestore
       setUser(firebaseUser);
+
+      // ── Detect if this is a public customer using Phone Authentication ──
+      const isPublicCustomer = firebaseUser.providerData.some(p => p.providerId === 'phone') || !!firebaseUser.phoneNumber;
+
+      if (isPublicCustomer) {
+        setAdminProfile(null);
+        setAccessDenied(false);
+        setLoading(false);
+        return;
+      }
 
       const profile = await fetchAdminProfile(firebaseUser.uid);
 
@@ -100,3 +129,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export const useAuth = () => useContext(AuthContext);
+

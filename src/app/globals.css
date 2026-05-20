@@ -42,3 +42,39 @@
 .bg-grid-white\/5 {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(255 255 255 / 0.05)'%3E%3Cpath d='M0 .5H31.5V32'/%3E%3C/svg%3E");
 }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}
+
+/* 
+  ⚡ Firebase reCAPTCHA Click / Touch Interaction Fixes 
+  Radix UI (and Shadcn) Dialog portals set pointer-events: none on sibling elements
+  and the body to block background interactions. Since Google reCAPTCHA appends
+  its challenge overlay to the bottom of document.body, it gets locked and unclickable.
+  
+  These selectors force pointer-events back to active on all reCAPTCHA challenge layers,
+  tooltips, badges, and their inner iframes.
+*/
+.grecaptcha-badge,
+div[style*="z-index: 2000000000"],
+div[style*="z-index: 2000000000"] iframe,
+div[style*="z-index: 2000000000"] *,
+iframe[title*="recaptcha"],
+iframe[src*="recaptcha"],
+iframe[src*="recaptcha"] * {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Fix z-index stacking context for pointer-events during active modal/dialogs */
+body[style*="pointer-events: none"] div[style*="z-index: 2000000000"],
+body[style*="pointer-events: none"] iframe[title*="recaptcha"] {
+  pointer-events: auto !important;
+  z-index: 2000000000 !important;
+}
+

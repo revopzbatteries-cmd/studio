@@ -64,28 +64,26 @@ const todayDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-export const PRODUCT_NUMBER_PATTERN = /^[A-Z0-9-]+$/;
+export const PRODUCT_NUMBER_PATTERN = /^[A-Z0-9-_]+$/;
 
 export const normalizeProductNumber = (value: string) => value.trim().toUpperCase();
 
 export const isValidProductNumber = (value: string) => {
   const normalizedValue = normalizeProductNumber(value);
 
-  return normalizedValue.length >= 5 && PRODUCT_NUMBER_PATTERN.test(normalizedValue);
+  return normalizedValue.length > 0 && PRODUCT_NUMBER_PATTERN.test(normalizedValue);
 };
 
 export const addManufacturedUnitSchema = z.object({
   productName: z.string()
     .trim()
-    .min(1, "Product name is required")
-    .min(3, "Product name must be at least 3 characters"),
+    .min(1, "Please select a product"),
   productNumber: z.string()
     .trim()
     .min(1, "Product number is required")
-    .min(5, "Product number must be at least 5 characters")
     .transform(value => value.toUpperCase())
     .refine(value => !/\s/.test(value), "Product number cannot contain spaces")
-    .refine(value => PRODUCT_NUMBER_PATTERN.test(value), "Use only letters, numbers, and hyphens"),
+    .refine(value => PRODUCT_NUMBER_PATTERN.test(value), "Use only letters, numbers, hyphens, and underscores"),
   category: z.enum(['Inverter', 'Battery', 'Solar', 'Other'], {
     errorMap: () => ({ message: "Please select a valid category" })
   }),
@@ -106,7 +104,7 @@ export const addManufacturedUnitSchema = z.object({
 });
 
 export const productSchema = z.object({
-  name: z.string().trim().min(3, "Name must be at least 3 characters"),
+  name: z.string().trim().min(1, "Product name is required"),
   slug: z.string().trim().min(1, "Slug is required"),
   category: z.enum(['inverters', 'batteries', 'systems']),
   powerRating: z.string().trim().min(1, "Power rating is required"),
@@ -123,11 +121,12 @@ export const productSchema = z.object({
     value: z.string()
   })).optional().default([]),
   warranty: z.string().optional().or(z.literal('')),
+  warrantyMonths: z.number().int().min(0).optional().default(60),
   installation: z.string().optional().or(z.literal('')),
   isPublished: z.boolean(),
   isFeatured: z.boolean(),
-  displayOrder: z.number().int().min(0),
 });
+
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type AddAdminFormData = z.infer<typeof addAdminSchema>;

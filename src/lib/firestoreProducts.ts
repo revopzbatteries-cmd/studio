@@ -25,8 +25,7 @@ export async function getPublishedProducts(): Promise<FirestoreProduct[]> {
   try {
     const q = query(
       collection(db, COLLECTION),
-      where('isPublished', '==', true),
-      orderBy('displayOrder', 'asc')
+      where('isPublished', '==', true)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FirestoreProduct));
@@ -67,8 +66,7 @@ export async function getPublishedProductsByCategory(
     const q = query(
       collection(db, COLLECTION),
       where('isPublished', '==', true),
-      where('category', '==', category),
-      orderBy('displayOrder', 'asc')
+      where('category', '==', category)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FirestoreProduct));
@@ -85,8 +83,7 @@ export async function getFeaturedProducts(): Promise<FirestoreProduct[]> {
     const q = query(
       collection(db, COLLECTION),
       where('isPublished', '==', true),
-      where('isFeatured', '==', true),
-      orderBy('displayOrder', 'asc')
+      where('isFeatured', '==', true)
     );
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FirestoreProduct));

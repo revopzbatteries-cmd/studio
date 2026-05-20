@@ -36,17 +36,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const isPartialUpdate = !body.name;
 
     if (isPartialUpdate) {
-      // ── Enforce single-featured rule ────────────────────────────────────────
+      // ── Enforce max 5 featured products rule ────────────────────────────────
       if (body.isFeatured === true) {
         const featuredSnap = await adminDb
           .collection('products')
           .where('isFeatured', '==', true)
           .get();
-        const batch = adminDb.batch();
-        featuredSnap.docs
-          .filter(d => d.id !== id)
-          .forEach(d => batch.update(d.ref, { isFeatured: false }));
-        await batch.commit();
+        const otherFeaturedCount = featuredSnap.docs.filter(d => d.id !== id).length;
+        if (otherFeaturedCount >= 5) {
+          return NextResponse.json({ error: 'Maximum 5 featured products allowed.' }, { status: 400 });
+        }
       }
       await adminDb
         .collection('products')
@@ -72,17 +71,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       );
     }
 
-    // ── Enforce single-featured rule ─────────────────────────────────────────
+    // ── Enforce max 5 featured products rule ─────────────────────────────────
     if (body.isFeatured) {
       const featuredSnap = await adminDb
         .collection('products')
         .where('isFeatured', '==', true)
         .get();
-      const batch = adminDb.batch();
-      featuredSnap.docs
-        .filter(d => d.id !== id)
-        .forEach(d => batch.update(d.ref, { isFeatured: false }));
-      await batch.commit();
+      const otherFeaturedCount = featuredSnap.docs.filter(d => d.id !== id).length;
+      if (otherFeaturedCount >= 5) {
+        return NextResponse.json({ error: 'Maximum 5 featured products allowed.' }, { status: 400 });
+      }
     }
 
     // ── Cleanup removed Cloudinary images ────────────────────────────────────

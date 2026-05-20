@@ -43,6 +43,7 @@ export const INITIAL_WARRANTIES: WarrantyEntry[] = [
 import { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, FirestoreError, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 
 function mapWarrantyDoc(docSnapshot: QueryDocumentSnapshot): WarrantyEntry {
   const data = docSnapshot.data();
@@ -62,11 +63,24 @@ function mapWarrantyDoc(docSnapshot: QueryDocumentSnapshot): WarrantyEntry {
 }
 
 export function useWarranties() {
+  const { user, adminProfile, loading: authLoading } = useAuth();
   const [warranties, setWarranties] = useState<WarrantyEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) {
+      setIsLoading(true);
+      return;
+    }
+
+    if (!user || !adminProfile) {
+      setWarranties([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
     setIsLoading(true);
     const q = query(collection(db, 'warranties'), orderBy('createdAt', 'desc'));
     
@@ -87,7 +101,7 @@ export function useWarranties() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [user, adminProfile, authLoading]);
 
-  return { warranties, isLoading, error };
+  return { warranties, isLoading: authLoading || isLoading, error };
 }

@@ -13,7 +13,17 @@ export async function getProductBySlugServer(slug: string): Promise<FirestorePro
 
     if (snapshot.empty) return null;
     const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() } as FirestoreProduct;
+    const data = doc.data();
+    
+    // Sanitize Timestamps for Client Components
+    if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+      data.createdAt = data.createdAt.toDate().toISOString();
+    }
+    if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+      data.updatedAt = data.updatedAt.toDate().toISOString();
+    }
+
+    return { id: doc.id, ...data } as FirestoreProduct;
   } catch (err: any) {
     console.error('[products-server] getProductBySlugServer failed:', err.message);
     return null;
@@ -24,10 +34,19 @@ export async function getPublishedProductsServer(): Promise<FirestoreProduct[]> 
   try {
     const snapshot = await adminDb.collection(COLLECTION)
       .where('isPublished', '==', true)
-      .orderBy('displayOrder', 'asc')
       .get();
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirestoreProduct));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Sanitize Timestamps for Client Components
+      if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+        data.createdAt = data.createdAt.toDate().toISOString();
+      }
+      if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+        data.updatedAt = data.updatedAt.toDate().toISOString();
+      }
+      return { id: doc.id, ...data } as FirestoreProduct;
+    });
   } catch (err: any) {
     console.error('[products-server] getPublishedProductsServer failed:', err.message);
     return [];

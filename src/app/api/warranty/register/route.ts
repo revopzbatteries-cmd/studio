@@ -15,11 +15,18 @@ export async function POST(request: Request) {
       productName,
       category,
       model,
+      phoneVerified,
+      verifiedPhoneNumber,
     } = body;
 
     // Validate essential fields
     if (!customerName || !customerPhone || !serialNumber) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Harden security: ensure phone is verified before saving
+    if (!phoneVerified) {
+      return NextResponse.json({ error: 'Phone number must be verified using OTP before registration' }, { status: 403 });
     }
 
     const normalizedSerial = serialNumber.trim().toUpperCase();
@@ -38,13 +45,13 @@ export async function POST(request: Request) {
     // Fetch the manufactured unit to get warrantyMonths and verify it exists
     const unitRef = adminDb.collection('manufactured_units').doc(normalizedSerial);
     const unitSnap = await unitRef.get();
-    
+
     if (!unitSnap.exists) {
       return NextResponse.json({ error: 'Manufactured unit not found' }, { status: 404 });
     }
 
     const unitData = unitSnap.data();
-    
+
     // Check if fake
     if (unitData && unitData.isFakeProduct === true) {
       return NextResponse.json({ error: 'Counterfeit product detected' }, { status: 403 });
@@ -71,29 +78,33 @@ export async function POST(request: Request) {
       category: category || unitData?.category || '',
       model: model || productName, // fallback to product name if model is missing
       powerRating: model || productName,
-      
+
       customerName,
       customerEmail: customerEmail || '',
       customerPhone,
       address,
-      
+
       dealerName: 'REVOPZ Direct',
       dealerPhone: '+91 97468 04951',
-      
+
       installationDate: warrantyStartDate,
       warrantyStartDate,
       warrantyEndDate,
       warrantyMonths,
-      
+
+      phoneVerified: true,
+      verifiedAt: FieldValue.serverTimestamp(),
+      verifiedPhoneNumber: verifiedPhoneNumber || `+91${customerPhone}`,
+
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      
+
       status: 'active',
     };
 
     // Use a batch to update both warranties and manufactured_units atomically
     const batch = adminDb.batch();
-    
+
     const newWarrantyRef = adminDb.collection('warranties').doc(registrationId);
     batch.set(newWarrantyRef, warrantyData);
 
