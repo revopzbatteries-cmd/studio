@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
@@ -142,61 +142,7 @@ export default function WarrantyPage() {
     return () => clearTimeout(timerId);
   }, [resendTimer]);
 
-  // ── reCAPTCHA initialization effect when modal opens ────────────────────────
-  useEffect(() => {
-    if (isCaptchaModalOpen) {
-      console.log('[Firebase Auth] Captcha modal opened. Initializing reCAPTCHA...');
-      const timer = setTimeout(() => {
-        try {
-          if (window.recaptchaVerifier) {
-            console.log('[Firebase Auth] Stale verifier found, clearing.');
-            window.recaptchaVerifier.clear();
-            window.recaptchaVerifier = undefined;
-          }
-
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            size: 'normal',
-            callback: async () => {
-              console.log('[Firebase Auth] reCAPTCHA successfully solved.');
-              await handleSendOTPAfterCaptcha();
-            },
-            'expired-callback': () => {
-              console.warn('[Firebase Auth] reCAPTCHA token expired.');
-              toast({
-                title: 'Verification Expired',
-                description: 'Captcha verification has expired. Please verify again.',
-                variant: 'destructive',
-              });
-            }
-          });
-
-          window.recaptchaVerifier.render().then((widgetId) => {
-            console.log('[Firebase Auth] reCAPTCHA widget rendered successfully. Widget ID:', widgetId);
-          });
-        } catch (err: any) {
-          console.error('[Firebase Auth] Failed to initialize RecaptchaVerifier:', err);
-          toast({
-            title: 'Verification Error',
-            description: 'Failed to initialize security captcha. Please try again.',
-            variant: 'destructive',
-          });
-          setIsCaptchaModalOpen(false);
-        }
-      }, 250); // slight delay to guarantee Dialog mounts fully in DOM
-
-      return () => clearTimeout(timer);
-    } else {
-      if (window.recaptchaVerifier) {
-        console.log('[Firebase Auth] Captcha modal closed. Clearing verifier instance.');
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (e) {
-          console.warn('[Firebase Auth] Error clearing verifier on modal close:', e);
-        }
-        window.recaptchaVerifier = undefined;
-      }
-    }
-  }, [isCaptchaModalOpen]);
+  // Note: reCAPTCHA ref and verifier logic have been moved below handleSendOTPAfterCaptcha to avoid Temporal Dead Zone errors.
 
   // complaint
   const [isComplaintLoading, setIsComplaintLoading] = useState(false);
@@ -434,6 +380,71 @@ export default function WarrantyPage() {
       setIsSendingOtp(false);
     }
   };
+
+  // Keep handleSendOTPAfterCaptcha in a ref to avoid stale closures in reCAPTCHA callback
+  const handleSendOtpRef = useRef(handleSendOTPAfterCaptcha);
+  useEffect(() => {
+    handleSendOtpRef.current = handleSendOTPAfterCaptcha;
+  }, [handleSendOTPAfterCaptcha]);
+
+  // ── reCAPTCHA Callback Ref for deterministic initialization and cleanup ──
+  const recaptchaContainerRef = useCallback((element: HTMLDivElement | null) => {
+    if (!element) {
+      // Element is unmounting — clean up the verifier instance
+      if (window.recaptchaVerifier) {
+        console.log('[Firebase Auth] Unmounting: Clearing recaptchaVerifier.');
+        try {
+          window.recaptchaVerifier.clear();
+        } catch (e) {
+          console.warn('[Firebase Auth] Error clearing verifier on unmount:', e);
+        }
+        window.recaptchaVerifier = undefined;
+      }
+      return;
+    }
+
+    console.log('[Firebase Auth] Recaptcha element mounted. Initializing verifier...');
+
+    // Clear any existing stale verifier
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (e) {
+        console.warn('[Firebase Auth] Error clearing stale verifier:', e);
+      }
+      window.recaptchaVerifier = undefined;
+    }
+
+    try {
+      // Pass the HTML element reference directly to prevent DOM ID selection races
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, element, {
+        size: 'normal',
+        callback: async () => {
+          console.log('[Firebase Auth] reCAPTCHA successfully solved.');
+          await handleSendOtpRef.current();
+        },
+        'expired-callback': () => {
+          console.warn('[Firebase Auth] reCAPTCHA token expired.');
+          toast({
+            title: 'Verification Expired',
+            description: 'Captcha verification has expired. Please verify again.',
+            variant: 'destructive',
+          });
+        }
+      });
+
+      window.recaptchaVerifier.render().then((widgetId) => {
+        console.log('[Firebase Auth] reCAPTCHA widget rendered successfully. Widget ID:', widgetId);
+      });
+    } catch (err: any) {
+      console.error('[Firebase Auth] Failed to initialize RecaptchaVerifier:', err);
+      toast({
+        title: 'Verification Error',
+        description: 'Failed to initialize security captcha. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [toast]);
 
   const handleVerifyOTP = async () => {
     if (!regForm.otp || regForm.otp.length < 6) {
@@ -1141,7 +1152,11 @@ export default function WarrantyPage() {
 
           {/* reCAPTCHA Widget Center Container */}
           <div className="w-full flex justify-center py-5 select-none min-h-[78px]">
-            <div id="recaptcha-container" className="mx-auto overflow-hidden rounded-md border border-white/5 shadow-inner"></div>
+            <div 
+              ref={recaptchaContainerRef}
+              id="recaptcha-container" 
+              className="mx-auto overflow-hidden rounded-md border border-white/5 shadow-inner"
+            ></div>
           </div>
 
           <p className="text-[10px] text-muted-foreground/60 leading-normal max-w-[280px]">
