@@ -2,13 +2,27 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeToAppUsers, type AppUser } from '@/lib/appUsers';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useAppUsers(searchTerm = '') {
+  const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (authLoading) {
+      setIsLoadingUsers(true);
+      return;
+    }
+
+    if (!user) {
+      setUsers([]);
+      setIsLoadingUsers(false);
+      setError(null);
+      return;
+    }
+
     setIsLoadingUsers(true);
     setError(null);
 
@@ -24,7 +38,7 @@ export function useAppUsers(searchTerm = '') {
     );
 
     return unsubscribe;
-  }, []);
+  }, [user, authLoading]);
 
   const filteredUsers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -42,7 +56,7 @@ export function useAppUsers(searchTerm = '') {
   return {
     users,
     filteredUsers,
-    isLoadingUsers,
+    isLoadingUsers: authLoading || isLoadingUsers,
     error,
   };
 }

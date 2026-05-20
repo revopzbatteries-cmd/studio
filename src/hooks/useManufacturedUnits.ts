@@ -5,13 +5,27 @@ import {
   subscribeToManufacturedUnits,
   type ManufacturedUnit,
 } from '@/lib/manufacturedUnits';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useManufacturedUnits(searchTerm = '') {
+  const { user, loading: authLoading } = useAuth();
   const [units, setUnits] = useState<ManufacturedUnit[]>([]);
   const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (authLoading) {
+      setIsLoadingUnits(true);
+      return;
+    }
+
+    if (!user) {
+      setUnits([]);
+      setIsLoadingUnits(false);
+      setError(null);
+      return;
+    }
+
     setIsLoadingUnits(true);
     setError(null);
 
@@ -27,7 +41,7 @@ export function useManufacturedUnits(searchTerm = '') {
     );
 
     return unsubscribe;
-  }, []);
+  }, [user, authLoading]);
 
   const filteredUnits = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -43,7 +57,7 @@ export function useManufacturedUnits(searchTerm = '') {
   return {
     units,
     filteredUnits,
-    isLoadingUnits,
+    isLoadingUnits: authLoading || isLoadingUnits,
     error,
   };
 }

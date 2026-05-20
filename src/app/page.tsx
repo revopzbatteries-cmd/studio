@@ -78,19 +78,19 @@ export default function Home() {
             <p className="text-muted-foreground max-w-[700px] mx-auto">Explore our range of high-performance energy storage and conversion solutions.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <CategoryCard 
+            <CategoryCard
               icon={<Zap className="text-primary" size={32} />}
               title="Lithium Inverters"
               description="High-efficiency pure sine wave inverters with smart management."
               href="/products"
             />
-            <CategoryCard 
+            <CategoryCard
               icon={<Battery className="text-primary" size={32} />}
               title="Lithium Battery Packs"
               description="Durable LifePo4 battery modules with advanced BMS protection."
               href="/products"
             />
-            <CategoryCard 
+            <CategoryCard
               icon={<Cpu className="text-primary" size={32} />}
               title="All-in-One Systems"
               description="Integrated energy hubs for seamless backup and control."
@@ -112,22 +112,22 @@ export default function Home() {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-10">
-                <Benefit 
+                <Benefit
                   icon={<Zap size={32} />}
                   title="High Efficiency Technology"
                   text="Optimized energy conversion for maximum power savings."
                 />
-                <Benefit 
+                <Benefit
                   icon={<ShieldCheck size={32} />}
                   title="Advanced Safety Systems"
                   text="Multi-layer protection built into every unit."
                 />
-                <Benefit 
+                <Benefit
                   icon={<Battery size={32} />}
                   title="Long Lasting Battery Life"
                   text="Premium cells designed for thousands of cycles."
                 />
-                <Benefit 
+                <Benefit
                   icon={<Cpu size={32} />}
                   title="Reliable Power Backup"
                   text="Seamless switching and stable output always."
@@ -135,7 +135,7 @@ export default function Home() {
               </div>
             </div>
             <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-primary/10">
-               <Image
+              <Image
                 src="https://picsum.photos/seed/revopz-factory/800/600"
                 alt="REVOPZ Quality Assurance"
                 fill
@@ -209,7 +209,7 @@ export default function Home() {
       <section className="py-24 bg-muted/50 border-y">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-[800px]">
           <div className="mb-8 relative inline-block">
-            <Image 
+            <Image
               src={PlaceHolderImages.find(img => img.id === 'ceo-portrait')?.imageUrl || ''}
               alt="CEO Amal Raj T P"
               width={100}
@@ -281,11 +281,11 @@ function ProductCard({ product }: { product: FirestoreProduct }) {
   // Safe fallbacks
   const imageSrc = product.imageUrl || (product.galleryImages && product.galleryImages.length > 0 ? product.galleryImages[0].url : PlaceHolderImages.find(img => img.id === 'hero-product')?.imageUrl || '/placeholder.jpg');
   const desc = product.shortDescription || product.description || 'Premium high-efficiency energy system designed for reliability and safety.';
-  
+
   return (
     <div className="group bg-card rounded-2xl border overflow-hidden hover:shadow-xl transition-all h-full flex flex-col">
       <div className="relative h-64 overflow-hidden shrink-0">
-        <Image 
+        <Image
           src={imageSrc}
           alt={product.name || product.productName || 'Product Image'}
           fill
