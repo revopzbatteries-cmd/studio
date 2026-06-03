@@ -52,6 +52,11 @@ export async function POST(request: Request) {
 
     const unitData = unitSnap.data();
 
+    // Check if already registered to prevent duplicate submissions
+    if (unitData && (unitData.status === 'Registered' || unitData.warrantyStatus === 'registered')) {
+      return NextResponse.json({ error: 'Warranty has already been registered for this serial number.' }, { status: 400 });
+    }
+
     // Check if fake
     if (unitData && unitData.isFakeProduct === true) {
       return NextResponse.json({ error: 'Counterfeit product detected' }, { status: 403 });

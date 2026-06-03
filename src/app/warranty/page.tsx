@@ -29,6 +29,7 @@ interface Product {
   purchaseDate?: string;
   expiryDate?: string;
   registrationId?: string;
+  warrantyMonths?: number;
 }
 
 // ── Date formatter ────────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ export default function WarrantyPage() {
           model: data.data.productName, // model defaults to productName if not separate
           category: data.data.category,
           warrantyStatus: 'not_registered',
+          warrantyMonths: Number(data.data.warrantyMonths) || 60,
         });
       } else if (data.source === 'warranty') {
         setSelectedProduct({
@@ -182,6 +184,7 @@ export default function WarrantyPage() {
           purchaseDate: data.data.installationDate,
           expiryDate: data.data.warrantyEndDate,
           registrationId: data.data.registrationId,
+          warrantyMonths: Number(data.data.warrantyMonths) || 60,
         });
       }
     } catch (err) {
@@ -671,8 +674,9 @@ export default function WarrantyPage() {
                 <Input
                   type="text"
                   value={(() => {
+                    const months = selectedProduct?.warrantyMonths ?? 60;
                     const d = new Date();
-                    d.setFullYear(d.getFullYear() + 5);
+                    d.setMonth(d.getMonth() + months);
                     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
                   })()}
                   readOnly
@@ -682,7 +686,7 @@ export default function WarrantyPage() {
               </div>
               <p className="text-xs text-muted-foreground/75 flex items-center gap-1.5 pt-0.5">
                 <Lock size={10} />
-                Auto-calculated based on standard 5-year warranty. Not editable.
+                Auto-calculated based on standard {selectedProduct?.warrantyMonths ?? 60}-month warranty. Not editable.
               </p>
             </div>
 

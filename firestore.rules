@@ -52,16 +52,19 @@ service cloud.firestore {
 
     // ── 3. WARRANTIES COLLECTION ──────────────────────────────────────────────
     match /warranties/{warrantyId} {
-      // Only managers can view or manage all registered warranties.
+      // Managers and Product Managers can view registered warranties.
       // Note: Public warranty registration is executed securely via serverless backend API routes
       // which utilize the Admin SDK and bypass these rules, eliminating any direct client writes.
-      allow read, write: if hasRole('manager');
+      allow read: if hasAnyRole(['manager', 'product_manager']);
+      allow write: if hasRole('manager');
     }
 
     // ── 4. MANUFACTURED UNITS COLLECTION ──────────────────────────────────────
     match /manufactured_units/{serialNumber} {
-      // Only managers and production unit staff can view and manage serial numbers.
-      allow read, write: if hasAnyRole(['manager', 'production_unit']);
+      // Managers, Product Managers, and Production Unit staff can read manufactured units.
+      // Only managers and product_managers can delete or update units.
+      allow read, create: if hasAnyRole(['manager', 'product_manager', 'production_unit']);
+      allow update, delete: if hasAnyRole(['manager', 'product_manager']);
     }
 
     // ── 5. APP USERS / SYSTEM USERS COLLECTION ───────────────────────────────

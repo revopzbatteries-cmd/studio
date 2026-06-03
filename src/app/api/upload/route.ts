@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import cloudinary from '@/lib/cloudinary';
+import { requireAdminAuth } from '@/lib/api-auth';
 
 export async function POST(req: Request) {
+    // Protect upload endpoint: only allow managers and product managers to upload images
+    const { error: authError } = await requireAdminAuth(req as any, ['manager', 'product_manager']);
+    if (authError) return authError;
+
     try {
         const body = await req.json();
 
