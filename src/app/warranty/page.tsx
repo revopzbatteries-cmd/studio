@@ -1170,11 +1170,11 @@ export default function WarrantyPage() {
               </p>
             </div>
 
-            <DialogFooter className="pt-5 flex gap-3 sticky bottom-0 bg-card pb-1 mt-4 sm:mt-6 border-t border-border/30">
+            <DialogFooter className="pt-5 mt-4 sm:mt-6 border-t border-border/30">
               <Button type="button" variant="ghost" onClick={() => setIsRegisterOpen(false)} className="h-11 hover:bg-accent/10 border-border/60">
                 <XCircle size={16} className="mr-2" /> Cancel
               </Button>
-              <Button type="submit" disabled={isRegistering || !phoneVerified} className="h-11 bg-primary hover:bg-primary/90 text-white font-medium px-6">
+              <Button type="submit" disabled={isRegistering} className="h-11 bg-primary hover:bg-primary/90 text-white font-medium px-6">
                 {isRegistering
                   ? <><Loader2 size={16} className="animate-spin mr-2" /> Registering…</>
                   : <><ShieldCheck size={16} className="mr-2" /> Activate Warranty</>}
@@ -1212,7 +1212,7 @@ export default function WarrantyPage() {
             </p>
           </div>
 
-          <DialogFooter className="flex gap-3 sm:flex-row sticky bottom-0 bg-card pt-2 pb-1">
+          <DialogFooter className="mt-4 pt-4 border-t border-border/30">
             <Button
               variant="ghost"
               className="flex-1"
