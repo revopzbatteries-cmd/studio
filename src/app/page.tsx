@@ -137,11 +137,11 @@ export default function Home() {
             </div>
             <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-primary/10">
               <Image
-                src="https://picsum.photos/seed/revopz-factory/800/600"
+                src="/images/Product2.png"
                 alt="REVOPZ Quality Assurance"
                 fill
-                className="object-cover"
-                data-ai-hint="battery factory"
+                className="object-contain p-4"
+                data-ai-hint="lithium battery pack"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
               <div className="absolute bottom-8 left-8">
