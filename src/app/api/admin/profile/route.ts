@@ -8,8 +8,6 @@ export const runtime = 'nodejs';
 // ─── PATCH /api/admin/profile ─────────────────────────────────────────────────
 // Any active admin can update their own name / email / password.
 export async function PATCH(request: NextRequest) {
-  console.log('[PATCH /api/admin/profile] Request received');
-
   // Any active admin role may update their own profile
   const { uid, error } = await requireAdminAuth(request, []);
   if (error) return error;
@@ -85,7 +83,6 @@ export async function PATCH(request: NextRequest) {
     // Update Firebase Auth
     if (Object.keys(authUpdate).length > 0) {
       await adminAuth.updateUser(uid, authUpdate);
-      console.log(`[PATCH /api/admin/profile] Auth updated for UID: ${uid}`);
     }
 
     // Update Firestore admin document
@@ -94,7 +91,6 @@ export async function PATCH(request: NextRequest) {
     if (email?.trim()) firestoreUpdate.email = email.trim();
 
     await adminDb.collection('admins').doc(uid).update(firestoreUpdate);
-    console.log(`[PATCH /api/admin/profile] Firestore updated for UID: ${uid}`);
 
     return NextResponse.json({ success: true, name: name?.trim(), email: email?.trim() });
   } catch (err: any) {

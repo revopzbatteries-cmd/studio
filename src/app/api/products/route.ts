@@ -84,9 +84,9 @@ export async function POST(request: Request) {
     if (!validation.success) {
       console.error('[API] POST /api/products validation failed:', JSON.stringify(validation.error.format(), null, 2));
       return NextResponse.json(
-        { 
-          error: 'Validation failed', 
-          details: validation.error.format() 
+        {
+          error: 'Validation failed',
+          details: validation.error.format()
         },
         { status: 400 }
       );
@@ -115,16 +115,12 @@ export async function POST(request: Request) {
     const docRef = await adminDb.collection('products').add(dataWithTimestamps);
     const createdDoc = await docRef.get();
     const created: FirestoreProduct = { id: docRef.id, ...createdDoc.data() } as FirestoreProduct;
-
-    console.log(`[API] Product created: ${created.id} (${created.name})`);
-
-    return NextResponse.json({ 
-      success: true, 
-      product: created 
+    return NextResponse.json({
+      success: true,
+      product: created
     }, { status: 201 });
 
   } catch (err: any) {
-    console.error('[API] POST /api/products failed:', err.message);
     return NextResponse.json(
       { error: 'Internal Server Error', message: err.message },
       { status: 500 }

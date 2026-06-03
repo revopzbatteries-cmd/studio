@@ -151,7 +151,6 @@ export default function AdminPage() {
     try {
       setIsLoggingIn(true);
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      console.log(`[Auth] Login successful for: ${userCredential.user.email}`);
       // AuthContext will fetch adminProfile from Firestore automatically via onAuthStateChanged
     } catch (error: any) {
       console.warn('[Auth] Sign-in failed. Code:', error.code);

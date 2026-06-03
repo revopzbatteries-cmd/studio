@@ -3,8 +3,7 @@ import { adminDb } from '@/lib/firebase-admin';
 export async function getWarrantyStatusBySerial(serial: string) {
   const normalizedSerial = serial.trim().toUpperCase();
 
-  console.log("[Client Warranty Search] Input:", normalizedSerial);
-  console.log("[Client Warranty Search] Checking warranties...");
+
 
   // 1. WARRANTIES COLLECTION FIRST
   const warrantiesQuery = adminDb.collection('warranties').where('serialNumber', '==', normalizedSerial).limit(1);
@@ -13,7 +12,7 @@ export async function getWarrantyStatusBySerial(serial: string) {
   const warrantyDoc = warrantiesSnap.empty ? null : warrantiesSnap.docs[0];
   if (warrantyDoc) {
     const warrantyData = warrantyDoc.data();
-    console.log("[Client Warranty Search] Returning ACTIVE warranty");
+
     
     const todayDateStr = new Date().toISOString().split('T')[0];
     const endDateStr = warrantyData.warrantyEndDate || '';
@@ -42,7 +41,7 @@ export async function getWarrantyStatusBySerial(serial: string) {
   }
 
   // 2. MANUFACTURED UNITS FALLBACK
-  console.log("[Client Warranty Search] Checking manufactured unit fallback");
+
   const unitRef = adminDb.collection('manufactured_units').doc(normalizedSerial);
   const unitSnap = await unitRef.get();
   const unitData = unitSnap.exists ? unitSnap.data() : null;

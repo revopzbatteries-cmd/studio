@@ -89,7 +89,6 @@ export function useWarranties() {
       (snapshot) => {
         const mapped = snapshot.docs.map(mapWarrantyDoc);
         setWarranties(mapped);
-        console.log("[Warranty Management] Loaded warranties:", mapped.length);
         setIsLoading(false);
         setError(null);
       },

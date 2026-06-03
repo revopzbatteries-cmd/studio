@@ -11,12 +11,8 @@ export const runtime = 'nodejs';
 // Allowed roles: manager, product_manager
 // Returns a sanitized list of all admin documents from Firestore.
 export async function GET(request: NextRequest) {
-  console.log('[GET /api/admin/admins] Request received');
-
   const { adminProfile, error } = await requireAdminAuth(request, ['manager', 'product_manager']);
   if (error) return error;
-
-  console.log(`[GET /api/admin/admins] Authorized as ${adminProfile.role} (${adminProfile.uid})`);
 
   try {
     const snapshot = await adminDb.collection('admins').get();
@@ -36,8 +32,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    console.log(`[GET /api/admin/admins] Returning ${admins.length} admin(s)`);
-
     return NextResponse.json({ admins });
   } catch (err: any) {
     console.error('[GET /api/admin/admins] Firestore fetch failed:', err.message);
@@ -50,12 +44,8 @@ export async function GET(request: NextRequest) {
 // Creates a new Firebase Auth user + Firestore admin document.
 // Does NOT affect the currently logged-in manager's session.
 export async function POST(request: NextRequest) {
-  console.log('[POST /api/admin/admins] Request received');
-
   const { uid: requestorUid, adminProfile, error } = await requireAdminAuth(request, ['manager']);
   if (error) return error;
-
-  console.log(`[POST /api/admin/admins] Authorized as ${adminProfile.role} (${requestorUid})`);
 
   // ── Parse and validate the request body ─────────────────────────────────────
 
@@ -78,8 +68,6 @@ export async function POST(request: NextRequest) {
   }
 
   const data = parsed.data;
-  console.log(`[POST /api/admin/admins] Creating admin: ${data.email} (role: ${data.role})`);
-
   // ── Check for duplicate email in Firebase Auth ───────────────────────────────
 
   try {
@@ -117,7 +105,6 @@ export async function POST(request: NextRequest) {
       password: data.password,
       disabled: false,
     });
-    console.log(`[POST /api/admin/admins] Auth user created: ${userRecord.uid}`);
   } catch (err: any) {
     console.error('[POST /api/admin/admins] Auth createUser failed:', err.code, err.message);
     if (err?.code === 'auth/email-already-exists') {
@@ -148,7 +135,6 @@ export async function POST(request: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    console.log(`[POST /api/admin/admins] Firestore document created for: ${userRecord.uid}`);
   } catch (err: any) {
     console.error('[POST /api/admin/admins] Firestore write failed — rolling back Auth user:', err.message);
     await adminAuth.deleteUser(userRecord.uid).catch((rollbackErr) => {
@@ -156,8 +142,6 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ error: 'Failed to create admin profile. Please try again.' }, { status: 500 });
   }
-
-  console.log(`[POST /api/admin/admins] Admin created successfully: ${userRecord.uid}`);
 
   return NextResponse.json(
     {

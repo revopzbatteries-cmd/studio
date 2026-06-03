@@ -21,7 +21,7 @@ function buildCredential() {
   if (serviceAccountJson) {
     try {
       const sa = JSON.parse(serviceAccountJson);
-      console.log('[firebase-admin] Initializing with FIREBASE_SERVICE_ACCOUNT_JSON');
+
       return cert(sa);
     } catch {
       throw new Error('[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON.');
@@ -54,8 +54,7 @@ function buildCredential() {
     );
   }
 
-  console.log('[firebase-admin] Initializing with individual FIREBASE_* env vars');
-  console.log(`[firebase-admin] Project: ${projectId} | Email: ${clientEmail}`);
+
   return cert({ projectId, clientEmail, privateKey });
 }
 
