@@ -53,13 +53,13 @@ export default function SlipActions({ filename }: { filename: string }) {
       // 6. Calculate A4 dimensions
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      
+
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      
+
       const imgWidth = pageWidth - 20; // 10mm margin
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
+
       // If content is taller than A4, we add it centered or multi-page if needed
       // For warranty slip, usually one page fits or we scale down slightly
       let finalY = 10;
@@ -98,12 +98,12 @@ export default function SlipActions({ filename }: { filename: string }) {
     <>
       <Script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" strategy="lazyOnload" />
       <Script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" strategy="lazyOnload" />
-      
+
       <div className="flex gap-3">
-        <Button variant="outline" onClick={handlePrint} className="border-primary/50 text-primary hover:bg-primary/10">
+        {/* <Button variant="outline" onClick={handlePrint} className="border-primary/50 text-primary hover:bg-primary/10" disabled>
           <Printer size={16} className="mr-2" />
           Print Slip
-        </Button>
+        </Button> */}
         <Button onClick={handleDownloadPdf} disabled={isDownloading} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[160px]">
           {isDownloading ? (
             <><Loader2 size={16} className="animate-spin mr-2" /> Generating...</>
