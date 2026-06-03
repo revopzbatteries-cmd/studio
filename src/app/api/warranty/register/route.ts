@@ -25,9 +25,9 @@ export async function POST(request: Request) {
     }
 
     // Harden security: ensure phone is verified before saving
-    if (!phoneVerified) {
-      return NextResponse.json({ error: 'Phone number must be verified using OTP before registration' }, { status: 403 });
-    }
+    // if (!phoneVerified) {
+    //   return NextResponse.json({ error: 'Phone number must be verified using OTP before registration' }, { status: 403 });
+    // }
 
     const normalizedSerial = serialNumber.trim().toUpperCase();
 

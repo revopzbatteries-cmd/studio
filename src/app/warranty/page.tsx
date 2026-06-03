@@ -276,7 +276,6 @@ export default function WarrantyPage() {
     const errs: Record<string, string> = {};
     if (!regForm.name.trim()) errs.name = 'Name is required.';
     if (!isValidPhone(regForm.phone)) errs.phone = 'Enter a valid 10-digit phone number.';
-    if (!regForm.otp.trim()) errs.otp = 'Please enter the OTP.';
     if (!isValidEmail(regForm.email)) errs.email = 'Enter a valid email address.';
     if (!regForm.address.trim()) errs.address = 'Address is required.';
     setRegErrors(errs);
@@ -695,15 +694,6 @@ export default function WarrantyPage() {
     e.preventDefault();
     if (!validateReg() || !selectedProduct) return;
 
-    if (!phoneVerified) {
-      toast({
-        title: 'Verification Required',
-        description: 'Please verify your phone number',
-        variant: 'destructive'
-      });
-      return;
-    }
-
     if (isRegistering) return;
     setIsRegistering(true);
     try {
@@ -718,7 +708,7 @@ export default function WarrantyPage() {
         productName: selectedProduct.name,
         category: selectedProduct.category,
         model: selectedProduct.model,
-        phoneVerified: phoneVerified,
+        phoneVerified: true,
         verifiedPhoneNumber: formattedPhone,
       };
 
@@ -1089,124 +1079,29 @@ export default function WarrantyPage() {
               {regErrors.name && <p className="text-xs text-destructive mt-1 font-medium">{regErrors.name}</p>}
             </div>
 
-            {/* Phone + OTP row */}
-            <div className={`grid grid-cols-1 ${otpSent ? 'sm:grid-cols-2' : ''} gap-5 transition-all duration-300`}>
-              <div className="space-y-1.5">
-                <Label htmlFor="reg-phone" className="text-sm font-medium flex items-center">
-                  <Phone size={14} className="inline mr-1.5 text-muted-foreground" />Phone *
-                </Label>
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                  <Input
-                    id="reg-phone"
-                    placeholder="10-digit number"
-                    maxLength={10}
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    value={regForm.phone}
-                    onChange={handlePhoneChange}
-                    disabled={phoneVerified || isSendingOtp}
-                    className={`transition-all duration-300 h-11 w-full ${
-                      phoneVerified
-                        ? 'bg-green-500/10 border-green-500/30 text-green-500 font-semibold'
-                        : regErrors.phone
-                        ? 'border-red-500 focus-visible:ring-red-500 bg-red-500/5'
-                        : ''
-                    } ${shakePhone ? 'animate-shake' : ''}`}
-                  />
-                  {!otpSent && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full sm:w-auto h-11 shrink-0 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed border-border/80 hover:bg-accent/10"
-                      onClick={handleSendOTP}
-                      disabled={!regForm.phone.trim() || !/^[6-9]\d{9}$/.test(regForm.phone.trim()) || isSendingOtp || isCaptchaModalOpen}
-                    >
-                      {isSendingOtp ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin mr-1.5" />
-                          Sending OTP...
-                        </>
-                      ) : isCaptchaModalOpen ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin mr-1.5" />
-                          Verifying...
-                        </>
-                      ) : (
-                        'Send OTP'
-                      )}
-                    </Button>
-                  )}
-                </div>
-                {regErrors.phone && (
-                  <p className="text-xs text-red-500 font-medium mt-1 animate-in fade-in duration-200">
-                    {regErrors.phone}
-                  </p>
-                )}
-              </div>
-
-              {otpSent && (
-                <div className="space-y-1.5 animate-in fade-in slide-in-from-left-2 duration-300">
-                  <Label htmlFor="reg-otp" className="text-sm font-medium">OTP *</Label>
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                    <Input
-                      id="reg-otp"
-                      placeholder="• • • • • •"
-                      maxLength={6}
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={regForm.otp}
-                      onChange={handleOtpChange}
-                      className={`flex-1 h-11 text-center font-mono tracking-[0.3em] transition-all duration-300 ${
-                        phoneVerified
-                          ? 'bg-green-500/10 border-green-500/30 text-green-500 font-bold'
-                          : regErrors.otp
-                          ? 'border-red-500 focus-visible:ring-red-500 bg-red-500/5'
-                          : ''
-                      }`}
-                      disabled={phoneVerified || isVerifying}
-                    />
-                    <Button 
-                      type="button" 
-                      variant={phoneVerified ? "default" : "outline"}
-                      className={`w-full sm:w-auto h-11 px-5 transition-all duration-300 shadow-sm ${
-                        phoneVerified
-                          ? 'bg-green-600 hover:bg-green-700 text-white border-green-600 disabled:opacity-100'
-                          : 'border-border/80'
-                      }`}
-                      onClick={handleVerifyOTP}
-                      disabled={isVerifying || phoneVerified || regForm.otp.length < 6}
-                    >
-                      {isVerifying ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : phoneVerified ? (
-                        <>
-                          <CheckCircle2 size={16} className="mr-1.5" /> Verified
-                        </>
-                      ) : (
-                        'Verify'
-                      )}
-                    </Button>
-                  </div>
-                  {regErrors.otp && (
-                    <p className="text-xs text-red-500 font-medium mt-1">
-                      {regErrors.otp}
-                    </p>
-                  )}
-                  {!phoneVerified && (
-                    <div className="min-h-[24px] flex items-center mt-1">
-                      <button
-                        type="button"
-                        className="text-xs text-primary underline cursor-pointer disabled:opacity-50 disabled:no-underline disabled:cursor-default transition-opacity hover:text-primary/80"
-                        onClick={handleSendOTP}
-                        disabled={isSendingOtp || resendTimer > 0}
-                      >
-                        {resendTimer > 0
-                          ? `Resend OTP in ${resendTimer}s`
-                          : 'Resend OTP'}
-                      </button>
-                    </div>
-                  )}
-                </div>
+            {/* Phone row (OTP disabled) */}
+            <div className="space-y-1.5 animate-in fade-in duration-300">
+              <Label htmlFor="reg-phone" className="text-sm font-medium flex items-center">
+                <Phone size={14} className="inline mr-1.5 text-muted-foreground" />Phone *
+              </Label>
+              <Input
+                id="reg-phone"
+                placeholder="10-digit number"
+                maxLength={10}
+                inputMode="numeric"
+                autoComplete="tel"
+                value={regForm.phone}
+                onChange={handlePhoneChange}
+                className={`transition-all duration-300 h-11 w-full ${
+                  regErrors.phone
+                    ? 'border-red-500 focus-visible:ring-red-500 bg-red-500/5'
+                    : ''
+                }`}
+              />
+              {regErrors.phone && (
+                <p className="text-xs text-red-500 font-medium mt-1 animate-in fade-in duration-200">
+                  {regErrors.phone}
+                </p>
               )}
             </div>
 
