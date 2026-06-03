@@ -55,15 +55,16 @@ export default function Home() {
                 </Button>
               </div>
             </div>
-            <div className="relative aspect-square lg:aspect-auto h-[400px] lg:h-[600px] flex items-center justify-center">
+            <div className="relative aspect-square lg:aspect-auto h-[350px] lg:h-[500px] flex items-center justify-center">
               <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
               <Image
-                src={PlaceHolderImages.find(img => img.id === 'hero-product')?.imageUrl || ''}
+                src="/images/Product1.png"
                 alt="Revopz Inverter"
-                width={800}
-                height={600}
-                className="relative z-10 rounded-2xl shadow-2xl object-cover"
+                width={650}
+                height={500}
+                className="relative z-10 rounded-3xl shadow-2xl object-contain max-h-full"
                 data-ai-hint="lithium inverter"
+                priority
               />
             </div>
           </div>
