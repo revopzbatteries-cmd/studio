@@ -11,7 +11,7 @@ export interface AdminProfile {
   email: string;
   role: FirestoreRole;
   permissions: string[];      // e.g. ["manage_products", "manage_units"]
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'suspended';
   createdAt: string;
 }
 

@@ -101,6 +101,7 @@ type AdminUser = {
   name: string;
   email: string;
   role: Role;
+  status?: string;
 };
 
 export default function AdminPage() {
@@ -424,6 +425,10 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
   const [resetPasswordVal, setResetPasswordVal] = useState('');
+  const [isDeletingAdmin, setIsDeletingAdmin] = useState<string | null>(null);
+  const [isSuspendingAdmin, setIsSuspendingAdmin] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<AdminUser | null>(null);
 
   // ── Load all admins from API on mount ─────────────────────────────────────
   const loadAdmins = async () => {
@@ -448,6 +453,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
         name: a.name,
         email: a.email,
         role: toDisplayRole(a.role),
+        status: a.status ?? 'active',
       }));
       setAdmins(mapped);
     } catch (err) {
@@ -461,6 +467,78 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
     loadAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleDeleteAdmin = async (targetUid: string) => {
+    setIsDeletingAdmin(targetUid);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Authentication required');
+
+      const response = await fetch(`/api/admin/admins?uid=${targetUid}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Failed to remove administrator');
+      }
+
+      toast({ title: 'Admin Removed', description: 'The administrator has been successfully deleted.' });
+      await loadAdmins();
+    } catch (err: any) {
+      toast({
+        title: 'Removal Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingAdmin(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleToggleSuspendAdmin = async (targetAdmin: AdminUser) => {
+    const isCurrentlySuspended = targetAdmin.status === 'suspended';
+    const newStatus = isCurrentlySuspended ? 'active' : 'suspended';
+    setIsSuspendingAdmin(targetAdmin.id);
+
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Authentication required');
+
+      const response = await fetch('/api/admin/admins', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid: targetAdmin.id, status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || `Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} administrator`);
+      }
+
+      toast({
+        title: isCurrentlySuspended ? 'Admin Activated' : 'Admin Suspended',
+        description: `The administrator has been successfully ${isCurrentlySuspended ? 'activated' : 'suspended'}.`,
+      });
+      await loadAdmins();
+    } catch (err: any) {
+      toast({
+        title: 'Action Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSuspendingAdmin(null);
+      setSuspendTarget(null);
+    }
+  };
 
   // ── React Hook Form setup ──────────────────────────────────────────────────
   const {
@@ -781,44 +859,143 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                     <TableCell className="font-medium">{admin.name}</TableCell>
                     <TableCell className="text-muted-foreground">{admin.email}</TableCell>
                     <TableCell>
-                      {getRoleBadge(admin.role)}
+                      <div className="flex items-center gap-2">
+                        {getRoleBadge(admin.role)}
+                        {admin.status === 'suspended' && (
+                          <Badge className="bg-red-600 text-white uppercase text-[10px] font-bold tracking-wider px-1.5 py-0.5">
+                            Suspended
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <Can permissions={permissions} perform="reset_passwords">
                       <TableCell className="text-right">
-                        <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
-                              <Key size={14} className="mr-1" /> Reset Pass
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="bg-card sm:max-w-sm">
-                            <DialogHeader>
-                              <DialogTitle>Reset Password</DialogTitle>
-                              <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4 space-y-4">
-                              <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
-                                <span className="text-sm text-muted-foreground">New Password</span>
-                                <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
-                                <div className="flex gap-2">
-                                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
-                                    <Copy size={14} className="mr-2" /> Copy
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
-                                    <RefreshCcw size={14} className="mr-1" /> Regenerate
-                                  </Button>
+                        <div className="flex justify-end items-center gap-1.5">
+                          {/* Reset Pass Dialog */}
+                          <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
+                                <Key size={14} className="mr-1" /> Reset Pass
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-card sm:max-w-sm">
+                              <DialogHeader>
+                                <DialogTitle>Reset Password</DialogTitle>
+                                <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
+                              </DialogHeader>
+                              <div className="py-4 space-y-4">
+                                <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
+                                  <span className="text-sm text-muted-foreground">New Password</span>
+                                  <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
+                                  <div className="flex gap-2">
+                                    <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
+                                      <Copy size={14} className="mr-2" /> Copy
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
+                                      <RefreshCcw size={14} className="mr-1" /> Regenerate
+                                    </Button>
+                                  </div>
                                 </div>
+                                <p className="text-xs text-muted-foreground text-center">
+                                  This password meets all security requirements. Share it securely with the administrator.
+                                </p>
                               </div>
-                              <p className="text-xs text-muted-foreground text-center">
-                                This password meets all security requirements. Share it securely with the administrator.
-                              </p>
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
-                              <Button onClick={handleConfirmReset}>Confirm Reset</Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
+                                <Button onClick={handleConfirmReset}>Confirm Reset</Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+
+                          {/* Manager-only actions for removing and suspending login profiles */}
+                          {adminProfile.role === 'manager' && (
+                            <>
+                              {/* Suspend / Activate Dialog */}
+                              <AlertDialog open={suspendTarget?.id === admin.id} onOpenChange={(open) => { if (!open) setSuspendTarget(null); }}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={admin.id === adminProfile.uid || isSuspendingAdmin === admin.id}
+                                    className={`text-xs ${admin.status === 'suspended' ? 'text-green-500 hover:bg-green-500/10 hover:text-green-600' : 'text-orange-500 hover:bg-orange-500/10 hover:text-orange-600'}`}
+                                    onClick={() => setSuspendTarget(admin)}
+                                  >
+                                    {isSuspendingAdmin === admin.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : admin.status === 'suspended' ? (
+                                      <>
+                                        <ShieldCheck size={14} className="mr-1" /> Activate
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ShieldOff size={14} className="mr-1" /> Suspend
+                                      </>
+                                    )}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-card">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      {admin.status === 'suspended' ? 'Activate Administrator?' : 'Suspend Administrator?'}
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {admin.status === 'suspended'
+                                        ? `Are you sure you want to reactivate the admin account for ${admin.name}? They will immediately regain system access.`
+                                        : `Are you sure you want to suspend the admin account for ${admin.name}? They will be immediately blocked from signing in or accessing the system.`}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleToggleSuspendAdmin(admin)}
+                                      className={admin.status === 'suspended' ? 'bg-primary hover:bg-primary/90' : 'bg-orange-500 hover:bg-orange-600'}
+                                    >
+                                      Confirm
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+
+                              {/* Remove Dialog */}
+                              <AlertDialog open={deleteTarget?.id === admin.id} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={admin.id === adminProfile.uid || isDeletingAdmin === admin.id}
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
+                                    onClick={() => setDeleteTarget(admin)}
+                                  >
+                                    {isDeletingAdmin === admin.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <>
+                                        <Trash2 size={14} className="mr-1" /> Remove
+                                      </>
+                                    )}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-card border-destructive/20">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-lg text-destructive">Remove Administrator?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-sm leading-relaxed">
+                                      Are you sure you want to permanently delete the administrator profile for <strong>{admin.name}</strong> ({admin.email})? This will delete their authentication credentials and profile data. This action is irreversible.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter className="mt-2">
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteAdmin(admin.id)}
+                                      className="bg-destructive hover:bg-destructive/90 text-white"
+                                    >
+                                      Remove
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </Can>
                   </TableRow>
