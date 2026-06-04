@@ -56,14 +56,14 @@ export default function Home() {
                 </Button>
               </div>
             </div>
-            <div className="relative aspect-square lg:aspect-auto h-[350px] lg:h-[500px] flex items-center justify-center">
-              <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
+            <div className="relative aspect-square lg:aspect-auto h-[350px] lg:h-[500px] flex items-center justify-center group">
+              <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full transition-all duration-700 group-hover:bg-primary/30 group-hover:scale-110" />
               <Image
                 src={Product1}
                 alt="Revopz Inverter"
                 width={650}
                 height={500}
-                className="relative z-10 rounded-3xl shadow-2xl object-contain max-h-full"
+                className="relative z-10 rounded-3xl shadow-2xl object-contain max-h-full transition-all duration-500 ease-out group-hover:scale-105 group-hover:-translate-y-2"
                 data-ai-hint="lithium inverter"
                 priority
               />
