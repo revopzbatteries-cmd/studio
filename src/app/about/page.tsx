@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Zap, ShieldCheck, Battery, Cpu, Home, ShoppingBag, Store, Briefcase } from 'lucide-react';
+import Product3 from '@/app/assets/images/Product3.png';
 
 export default function AboutPage() {
   return (
@@ -24,12 +25,12 @@ export default function AboutPage() {
       <section className="py-24">
         <div className="container mx-auto px-4 md:px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div className="relative h-[400px] rounded-3xl overflow-hidden shadow-2xl border border-primary/10">
+            <div className="relative h-[400px] rounded-3xl overflow-hidden shadow-2xl border border-primary/10 bg-muted/20">
               <Image 
-                src="https://picsum.photos/seed/revopz-factory/800/600"
-                alt="REVOPZ Facility"
+                src={Product3}
+                alt="REVOPZ Product"
                 fill
-                className="object-cover"
+                className="object-contain p-6"
               />
             </div>
             <div className="space-y-8">

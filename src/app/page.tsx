@@ -10,6 +10,7 @@ import { useState, useEffect } from 'react';
 import { getFeaturedProducts } from '@/lib/firestoreProducts';
 import type { FirestoreProduct } from '@/app/admin/types';
 import { Skeleton } from '@/components/ui/skeleton';
+import Product1 from '@/app/assets/images/Product1.png';
 
 export default function Home() {
   const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
@@ -58,7 +59,7 @@ export default function Home() {
             <div className="relative aspect-square lg:aspect-auto h-[350px] lg:h-[500px] flex items-center justify-center">
               <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
               <Image
-                src="/images/Product1.png"
+                src={Product1}
                 alt="Revopz Inverter"
                 width={650}
                 height={500}
