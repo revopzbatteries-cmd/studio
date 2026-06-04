@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -6,12 +5,31 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Battery, Zap, ShieldCheck, Cpu, ArrowRight } from 'lucide-react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { PRODUCTS } from '@/lib/products';
 import { EnquiryModal } from '@/components/EnquiryModal';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getFeaturedProducts } from '@/lib/firestoreProducts';
+import type { FirestoreProduct } from '@/app/admin/types';
+import { Skeleton } from '@/components/ui/skeleton';
+import Product1 from '@/app/assets/images/Product1.png';
 
 export default function Home() {
   const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+  const [featuredProducts, setFeaturedProducts] = useState<FirestoreProduct[]>([]);
+  const [isLoadingFeatured, setIsLoadingFeatured] = useState(true);
+
+  useEffect(() => {
+    async function loadFeatured() {
+      try {
+        const products = await getFeaturedProducts();
+        setFeaturedProducts(products);
+      } catch (err) {
+        console.error("Failed to load featured products", err);
+      } finally {
+        setIsLoadingFeatured(false);
+      }
+    }
+    loadFeatured();
+  }, []);
 
   return (
     <div className="flex flex-col w-full">
@@ -38,15 +56,16 @@ export default function Home() {
                 </Button>
               </div>
             </div>
-            <div className="relative aspect-square lg:aspect-auto h-[400px] lg:h-[600px] flex items-center justify-center">
-              <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full" />
+            <div className="relative aspect-square lg:aspect-auto h-[350px] lg:h-[500px] flex items-center justify-center group">
+              <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full transition-all duration-700 group-hover:bg-primary/30 group-hover:scale-110" />
               <Image
-                src={PlaceHolderImages.find(img => img.id === 'hero-product')?.imageUrl || ''}
+                src={Product1}
                 alt="Revopz Inverter"
-                width={800}
-                height={600}
-                className="relative z-10 rounded-2xl shadow-2xl object-cover"
+                width={650}
+                height={500}
+                className="relative z-10 rounded-3xl shadow-2xl object-contain max-h-full transition-all duration-500 ease-out group-hover:scale-105 group-hover:-translate-y-2"
                 data-ai-hint="lithium inverter"
+                priority
               />
             </div>
           </div>
@@ -61,19 +80,19 @@ export default function Home() {
             <p className="text-muted-foreground max-w-[700px] mx-auto">Explore our range of high-performance energy storage and conversion solutions.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <CategoryCard 
+            <CategoryCard
               icon={<Zap className="text-primary" size={32} />}
               title="Lithium Inverters"
               description="High-efficiency pure sine wave inverters with smart management."
               href="/products"
             />
-            <CategoryCard 
+            <CategoryCard
               icon={<Battery className="text-primary" size={32} />}
               title="Lithium Battery Packs"
               description="Durable LifePo4 battery modules with advanced BMS protection."
               href="/products"
             />
-            <CategoryCard 
+            <CategoryCard
               icon={<Cpu className="text-primary" size={32} />}
               title="All-in-One Systems"
               description="Integrated energy hubs for seamless backup and control."
@@ -95,22 +114,22 @@ export default function Home() {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-10">
-                <Benefit 
+                <Benefit
                   icon={<Zap size={32} />}
                   title="High Efficiency Technology"
                   text="Optimized energy conversion for maximum power savings."
                 />
-                <Benefit 
+                <Benefit
                   icon={<ShieldCheck size={32} />}
                   title="Advanced Safety Systems"
                   text="Multi-layer protection built into every unit."
                 />
-                <Benefit 
+                <Benefit
                   icon={<Battery size={32} />}
                   title="Long Lasting Battery Life"
                   text="Premium cells designed for thousands of cycles."
                 />
-                <Benefit 
+                <Benefit
                   icon={<Cpu size={32} />}
                   title="Reliable Power Backup"
                   text="Seamless switching and stable output always."
@@ -118,12 +137,12 @@ export default function Home() {
               </div>
             </div>
             <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border border-primary/10">
-               <Image
-                src="https://picsum.photos/seed/revopz-factory/800/600"
+              <Image
+                src="/images/Product2.png"
                 alt="REVOPZ Quality Assurance"
                 fill
-                className="object-cover"
-                data-ai-hint="battery factory"
+                className="object-contain p-4"
+                data-ai-hint="lithium battery pack"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
               <div className="absolute bottom-8 left-8">
@@ -138,33 +157,61 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured Products */}
-      <section className="py-24 bg-background">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
-            <div className="space-y-2">
-              <h2 className="text-3xl font-bold font-headline">Featured Products</h2>
-              <p className="text-muted-foreground">Selected best-sellers for home and business.</p>
+      {/* Featured Products (Dynamic from Firestore) */}
+      {(isLoadingFeatured || featuredProducts.length > 0) && (
+        <section className="py-24 bg-background">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
+              <div className="space-y-2">
+                <h2 className="text-3xl font-bold font-headline">Featured Products</h2>
+                <p className="text-muted-foreground">Selected best-sellers for home and business.</p>
+              </div>
+              <Button asChild variant="link" className="text-primary hover:text-primary/80 group">
+                <Link href="/products" className="flex items-center">
+                  Explore All Products <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
             </div>
-            <Button asChild variant="link" className="text-primary hover:text-primary/80 group">
-              <Link href="/products" className="flex items-center">
-                Explore All Products <ArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </Button>
+            <div className={
+              isLoadingFeatured
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8"
+                : featuredProducts.length === 1
+                  ? "grid grid-cols-1 max-w-sm mx-auto gap-8 w-full"
+                  : featuredProducts.length === 2
+                    ? "grid grid-cols-1 md:grid-cols-2 max-w-3xl mx-auto gap-8 w-full"
+                    : featuredProducts.length === 3
+                      ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto gap-8 w-full"
+                      : featuredProducts.length === 4
+                        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 w-full"
+                        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8 w-full"
+            }>
+              {isLoadingFeatured ? (
+                <>
+                  <ProductCardSkeleton />
+                  <ProductCardSkeleton />
+                  <ProductCardSkeleton />
+                  <div className="hidden lg:block xl:hidden">
+                    <ProductCardSkeleton />
+                  </div>
+                  <div className="hidden xl:block">
+                    <ProductCardSkeleton />
+                  </div>
+                </>
+              ) : (
+                featuredProducts.slice(0, 5).map(product => (
+                  <ProductCard key={product.id} product={product} />
+                ))
+              )}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {PRODUCTS.slice(0, 3).map(product => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* CEO Message */}
       <section className="py-24 bg-muted/50 border-y">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-[800px]">
           <div className="mb-8 relative inline-block">
-            <Image 
+            <Image
               src={PlaceHolderImages.find(img => img.id === 'ceo-portrait')?.imageUrl || ''}
               alt="CEO Amal Raj T P"
               width={100}
@@ -232,29 +279,49 @@ function Benefit({ icon, title, text }: { icon: React.ReactNode, title: string, 
   );
 }
 
-function ProductCard({ product }: { product: any }) {
+function ProductCard({ product }: { product: FirestoreProduct }) {
+  // Safe fallbacks
+  const imageSrc = product.imageUrl || (product.galleryImages && product.galleryImages.length > 0 ? product.galleryImages[0].url : PlaceHolderImages.find(img => img.id === 'hero-product')?.imageUrl || '/placeholder.jpg');
+  const desc = product.shortDescription || product.description || 'Premium high-efficiency energy system designed for reliability and safety.';
+
   return (
-    <div className="group bg-card rounded-2xl border overflow-hidden hover:shadow-xl transition-all">
-      <div className="relative h-64 overflow-hidden">
-        <Image 
-          src={product.image}
-          alt={product.name}
+    <div className="group bg-card rounded-2xl border overflow-hidden hover:shadow-xl transition-all h-full flex flex-col">
+      <div className="relative h-64 overflow-hidden shrink-0">
+        <Image
+          src={imageSrc}
+          alt={product.name || product.productName || 'Product Image'}
           fill
           className="object-cover group-hover:scale-105 transition-transform duration-500"
         />
         <div className="absolute top-4 right-4 bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
-          New
+          {product.category || 'Featured'}
         </div>
       </div>
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4 flex flex-col flex-grow">
         <div>
-          <h3 className="text-xl font-bold font-headline">{product.name}</h3>
-          <p className="text-xs text-primary font-medium">{product.powerRating}</p>
+          <h3 className="text-xl font-bold font-headline">{product.name || product.productName}</h3>
+          <p className="text-xs text-primary font-medium mt-1">{product.powerRating || product.power || 'Custom Power'}</p>
         </div>
-        <p className="text-sm text-muted-foreground line-clamp-2">{product.shortDescription}</p>
-        <Button asChild className="w-full bg-secondary hover:bg-primary hover:text-white">
+        <p className="text-sm text-muted-foreground line-clamp-2 flex-grow">{desc}</p>
+        <Button asChild className="w-full bg-secondary hover:bg-primary hover:text-white shrink-0 mt-4">
           <Link href={`/products/${product.slug}`}>View Details</Link>
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function ProductCardSkeleton() {
+  return (
+    <div className="bg-card rounded-2xl border overflow-hidden h-full flex flex-col">
+      <Skeleton className="h-64 w-full rounded-none shrink-0" />
+      <div className="p-6 space-y-4 flex flex-col flex-grow">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-3/4" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <Skeleton className="h-10 w-full flex-grow" />
+        <Skeleton className="h-10 w-full shrink-0 mt-4" />
       </div>
     </div>
   );

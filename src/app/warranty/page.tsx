@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, Search, Loader2, CheckCircle2, AlertCircle,
   Package, User, Phone, Mail, MapPin, Tag, XCircle, ClipboardCheck,
-  ShieldOff, RefreshCw, CalendarDays, Lock
+  ShieldOff, CalendarDays, Lock, FileText, ShieldAlert, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getManufacturedUnit } from '@/lib/manufacturedUnits';
+import { WarrantySlipModal } from './components/WarrantySlipModal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type WarrantyStatus = 'not_registered' | 'active' | 'expired';
@@ -25,6 +28,8 @@ interface Product {
   warrantyStatus: WarrantyStatus;
   purchaseDate?: string;
   expiryDate?: string;
+  registrationId?: string;
+  warrantyMonths?: number;
 }
 
 // ── Date formatter ────────────────────────────────────────────────────────────
@@ -64,6 +69,7 @@ const chipColors: Record<WarrantyStatus, string> = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WarrantyPage() {
+  const router = useRouter();
   const { toast } = useToast();
 
   // ── Mock product data ──────────────────────────────────────────────────────
@@ -101,11 +107,13 @@ export default function WarrantyPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isFakeProduct, setIsFakeProduct] = useState(false);
+  const [fakeReason, setFakeReason] = useState('');
 
   // register modal
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [regForm, setRegForm] = useState({ name: '', phone: '', otp: '', email: '', address: '' });
+  const [regForm, setRegForm] = useState({ name: '', phone: '', email: '', address: '' });
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
   // complaint
@@ -114,12 +122,23 @@ export default function WarrantyPage() {
   // contact support modal
   const [showContactModal, setShowContactModal] = useState(false);
 
+  // warranty slip modal
+  const [isSlipOpen, setIsSlipOpen] = useState(false);
+
   // ── Body scroll lock when any modal is open ──────────────────────────
   useEffect(() => {
     const anyOpen = isRegisterOpen || showContactModal;
     document.body.style.overflow = anyOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [isRegisterOpen, showContactModal]);
+
+  // ── Reset states on modal close ───────────────────────────────
+  useEffect(() => {
+    if (!isRegisterOpen) {
+      setRegForm({ name: '', phone: '', email: '', address: '' });
+      setRegErrors({});
+    }
+  }, [isRegisterOpen]);
 
   // ── Chip click → autofill + search ────────────────────────────────────────
   const handleChipClick = (serial: string) => {
@@ -128,18 +147,53 @@ export default function WarrantyPage() {
   };
 
   // ── Core search logic ──────────────────────────────────────────────────────
-  const triggerSearch = (serial: string) => {
+  const triggerSearch = async (serial: string) => {
     if (!serial.trim()) return;
     setIsSearching(true);
     setHasSearched(false);
     setSelectedProduct(null);
+    setIsFakeProduct(false);
+    setFakeReason('');
 
-    setTimeout(() => {
-      const found = products.find(p => p.serial.toLowerCase() === serial.trim().toLowerCase());
-      setSelectedProduct(found ?? null);
+    try {
+      const res = await fetch(`/api/warranty/search?serial=${encodeURIComponent(serial)}`, { cache: 'no-store' });
+      const data = await res.json();
+
+      if (!data.found) {
+        setSelectedProduct(null);
+      } else if (data.status === 'fake_product') {
+        setIsFakeProduct(true);
+        setFakeReason(data.reason || '');
+        setSelectedProduct(null);
+      } else if (data.source === 'manufactured_unit') {
+        setSelectedProduct({
+          serial: data.data.productNumber,
+          name: data.data.productName,
+          model: data.data.productName, // model defaults to productName if not separate
+          category: data.data.category,
+          warrantyStatus: 'not_registered',
+          warrantyMonths: Number(data.data.warrantyMonths) || 60,
+        });
+      } else if (data.source === 'warranty') {
+        setSelectedProduct({
+          serial: data.data.serialNumber,
+          name: data.data.productName,
+          model: data.data.model || data.data.productName,
+          category: data.data.category,
+          warrantyStatus: data.status, // 'active' | 'expired'
+          purchaseDate: data.data.installationDate,
+          expiryDate: data.data.warrantyEndDate,
+          registrationId: data.data.registrationId,
+          warrantyMonths: Number(data.data.warrantyMonths) || 60,
+        });
+      }
+    } catch (err) {
+      console.error('[Warranty] Search failed:', err);
+      setSelectedProduct(null);
+    } finally {
       setIsSearching(false);
       setHasSearched(true);
-    }, 600);
+    }
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -152,48 +206,76 @@ export default function WarrantyPage() {
     const errs: Record<string, string> = {};
     if (!regForm.name.trim()) errs.name = 'Name is required.';
     if (!isValidPhone(regForm.phone)) errs.phone = 'Enter a valid 10-digit phone number.';
-    if (!regForm.otp.trim()) errs.otp = 'Please enter the OTP.';
     if (!isValidEmail(regForm.email)) errs.email = 'Enter a valid email address.';
     if (!regForm.address.trim()) errs.address = 'Address is required.';
     setRegErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '');
+    setRegForm(f => ({ ...f, phone: value }));
+    if (regErrors.phone) {
+      setRegErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
+
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateReg() || !selectedProduct) return;
 
+    if (isRegistering) return;
     setIsRegistering(true);
-    setTimeout(() => {
-      // Compute a 2-year expiry from today for newly registered products
-      const today = new Date();
-      const expiry = new Date(today);
-      expiry.setFullYear(expiry.getFullYear() + 2);
-      const purchaseDate = today.toISOString().split('T')[0];
-      const expiryDate = expiry.toISOString().split('T')[0];
+    try {
+      const formattedPhone = regForm.phone.startsWith('+') ? regForm.phone : `+91${regForm.phone.replace(/^0+/, '')}`;
 
-      // Update state
-      setProducts(prev =>
-        prev.map(p =>
-          p.serial === selectedProduct.serial
-            ? { ...p, warrantyStatus: 'active', purchaseDate, expiryDate }
-            : p
-        )
-      );
+      const payload = {
+        customerName: regForm.name,
+        customerPhone: formattedPhone,
+        customerEmail: regForm.email,
+        address: regForm.address,
+        serialNumber: selectedProduct.serial,
+        productName: selectedProduct.name,
+        category: selectedProduct.category,
+        model: selectedProduct.model,
+        phoneVerified: true,
+        verifiedPhoneNumber: formattedPhone,
+      };
 
-      // Reflect updated product in results immediately
-      setSelectedProduct({ ...selectedProduct, warrantyStatus: 'active', purchaseDate, expiryDate });
+      const res = await fetch('/api/warranty/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
 
-      setIsRegistering(false);
+      if (!res.ok) throw new Error(data.error || 'Failed to register warranty');
+
+      await triggerSearch(selectedProduct.serial);
+      
+      router.refresh();
+
       setIsRegisterOpen(false);
-      setRegForm({ name: '', phone: '', otp: '', email: '', address: '' });
+      setRegForm({ name: '', phone: '', email: '', address: '' });
       setRegErrors({});
 
       toast({
         title: '🎉 Warranty Registered!',
         description: `${selectedProduct.name} is now covered under active warranty.`,
       });
-    }, 1500);
+
+      window.open(`/warranty/slip/${data.registrationId}`, '_blank');
+    } catch (err: any) {
+      toast({
+        title: 'Registration Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   // ── Raise complaint ────────────────────────────────────────────────────────
@@ -258,7 +340,7 @@ export default function WarrantyPage() {
           </CardContent>
         </Card>
 
-        {/* ── Demo chips ────────────────────────────────────────────────── */}
+        {/* ── Demo chips ──────────────────────────────────────────────────
         <div className="mb-12 p-5 rounded-2xl border border-dashed border-primary/25 bg-primary/5">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
             🧪 Demo Product Numbers — click to test instantly
@@ -276,14 +358,77 @@ export default function WarrantyPage() {
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
 
         {/* ── Results ───────────────────────────────────────────────────── */}
         {hasSearched && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
 
+            {/* FAKE PRODUCT WARNING */}
+            {isFakeProduct && (
+              <div className="rounded-3xl overflow-hidden border-2 border-red-700/60 bg-red-950/30">
+                <div className="bg-red-700/20 border-b border-red-700/30 px-8 py-5 flex items-center gap-4">
+                  <div className="h-14 w-14 rounded-full bg-red-700/30 flex items-center justify-center shrink-0">
+                    <ShieldAlert size={28} className="text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-red-400/80 mb-0.5">Security Alert</p>
+                    <h3 className="text-2xl font-bold font-headline text-red-300">Counterfeit Product Detected</h3>
+                  </div>
+                </div>
+                <div className="px-8 py-7 space-y-6">
+                  <p className="text-muted-foreground leading-relaxed">
+                    This serial number{' '}
+                    <span className="font-mono font-bold text-red-300 bg-red-900/30 px-2 py-0.5 rounded">
+                      {inputValue.trim().toUpperCase()}
+                    </span>{' '}
+                    has been flagged as a <span className="text-red-400 font-semibold">non-genuine REVOPZ product</span>.
+                    Warranty and support services are <strong>unavailable</strong> for counterfeit products.
+                  </p>
+                  {fakeReason && (
+                    <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 space-y-1">
+                      <p className="text-xs font-bold uppercase tracking-wider text-red-400/80 flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> Flagged Reason
+                      </p>
+                      <p className="text-sm text-red-200/80 italic">&ldquo;{fakeReason}&rdquo;</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div className="p-4 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Serial Number</p>
+                      <p className="font-mono font-bold text-red-300">{inputValue.trim().toUpperCase()}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-muted/20 border border-border/40 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Warranty Status</p>
+                      <p className="font-semibold text-red-400 flex items-center gap-1.5">
+                        <ShieldAlert size={14} /> Not Applicable — Counterfeit
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 text-sm space-y-2">
+                    <p className="font-semibold text-red-300/90 flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> What should you do?
+                    </p>
+                    <p className="text-muted-foreground">
+                      If you purchased this product from an authorised dealer, please contact REVOPZ customer care immediately.
+                      Do not use this product — counterfeit electronics may pose safety risks.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                    <Button className="bg-red-700 hover:bg-red-600 text-white flex-1" onClick={handleContactSupport}>
+                      <Phone size={16} className="mr-2" /> Contact Support
+                    </Button>
+                    <Button variant="outline" className="border-border flex-1"
+                      onClick={() => { setHasSearched(false); setInputValue(''); setIsFakeProduct(false); setFakeReason(''); }}>
+                      <RefreshCw size={16} className="mr-2" /> Search Again
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* NOT FOUND */}
-            {!selectedProduct && (
+            {!isFakeProduct && !selectedProduct && (
               <div className="p-12 text-center bg-destructive/10 border border-destructive/20 rounded-3xl space-y-4">
                 <AlertCircle size={48} className="text-destructive mx-auto" />
                 <h3 className="text-2xl font-bold font-headline">Product Not Found</h3>
@@ -363,7 +508,7 @@ export default function WarrantyPage() {
                 {/* ── CASE 2: ACTIVE ──────────────────────────────────── */}
                 {selectedProduct.warrantyStatus === 'active' && (
                   <div className="p-6 rounded-2xl border border-green-500/25 bg-green-500/5 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div>
+                    <div className="flex-1">
                       <h4 className="text-lg font-bold font-headline text-green-400">✅ Active Warranty Coverage</h4>
                       <p className="text-muted-foreground text-sm mt-1">
                         {selectedProduct.expiryDate
@@ -371,6 +516,15 @@ export default function WarrantyPage() {
                           : 'Your product is covered under active warranty.'}
                       </p>
                     </div>
+                    {selectedProduct.registrationId && (
+                      <Button 
+                        variant="outline" 
+                        className="border-green-500/30 text-green-400 hover:bg-green-500/10 hover:text-green-300"
+                        onClick={() => setIsSlipOpen(true)}
+                      >
+                        <FileText size={18} className="mr-2" /> View Warranty Slip
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -417,74 +571,63 @@ export default function WarrantyPage() {
 
       {/* ── Register Warranty Modal ─────────────────────────────────────── */}
       <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
-        <DialogContent className="bg-card max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-md:bottom-auto max-md:top-1/2 max-md:-translate-y-1/2 max-md:left-1/2 max-md:-translate-x-1/2 max-md:w-[calc(100vw-32px)] max-md:rounded-2xl max-md:p-6 max-w-[520px] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-card border-primary/20 shadow-2xl p-6 sm:p-8 animate-in fade-in zoom-in-95 duration-200">
+          <DialogHeader className="relative">
             <DialogTitle className="text-2xl font-headline flex items-center gap-2">
               <ShieldCheck className="text-primary" size={24} /> Register Warranty
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-muted-foreground/80 mt-1.5">
               Fill in your details to activate warranty for{' '}
               <span className="font-semibold text-foreground">{selectedProduct?.name}</span>.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleRegisterSubmit} className="space-y-4 py-2">
+          <form onSubmit={handleRegisterSubmit} className="space-y-5 py-2">
             {/* Name */}
-            <div className="space-y-1">
-              <Label htmlFor="reg-name">
-                <User size={14} className="inline mr-1" />Full Name *
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-name" className="text-sm font-medium flex items-center">
+                <User size={14} className="inline mr-1.5 text-muted-foreground" />Full Name *
               </Label>
               <Input
                 id="reg-name"
                 placeholder="e.g. Suresh Kumar"
                 value={regForm.name}
                 onChange={e => setRegForm(f => ({ ...f, name: e.target.value }))}
+                className="bg-background border-border/80 focus-visible:ring-primary focus-visible:ring-1 h-11"
               />
-              {regErrors.name && <p className="text-xs text-destructive">{regErrors.name}</p>}
+              {regErrors.name && <p className="text-xs text-destructive mt-1 font-medium">{regErrors.name}</p>}
             </div>
 
-            {/* Phone + OTP row */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor="reg-phone">
-                  <Phone size={14} className="inline mr-1" />Phone *
-                </Label>
-                <Input
-                  id="reg-phone"
-                  placeholder="10-digit number"
-                  maxLength={10}
-                  value={regForm.phone}
-                  onChange={e => setRegForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
-                />
-                {regErrors.phone && <p className="text-xs text-destructive">{regErrors.phone}</p>}
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="reg-otp">OTP *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="reg-otp"
-                    placeholder="Enter OTP"
-                    maxLength={6}
-                    value={regForm.otp}
-                    onChange={e => setRegForm(f => ({ ...f, otp: e.target.value.replace(/\D/g, '') }))}
-                    className="flex-1"
-                  />
-                </div>
-                {regErrors.otp && <p className="text-xs text-destructive">{regErrors.otp}</p>}
-                <button
-                  type="button"
-                  className="text-xs text-primary underline cursor-pointer"
-                  onClick={() => toast({ title: 'OTP Sent', description: 'Use any 6-digit code for demo.' })}
-                >
-                  Send OTP
-                </button>
-              </div>
+            {/* Phone row (OTP disabled) */}
+            <div className="space-y-1.5 animate-in fade-in duration-300">
+              <Label htmlFor="reg-phone" className="text-sm font-medium flex items-center">
+                <Phone size={14} className="inline mr-1.5 text-muted-foreground" />Phone *
+              </Label>
+              <Input
+                id="reg-phone"
+                placeholder="10-digit number"
+                maxLength={10}
+                inputMode="numeric"
+                autoComplete="tel"
+                value={regForm.phone}
+                onChange={handlePhoneChange}
+                className={`transition-all duration-300 h-11 w-full ${
+                  regErrors.phone
+                    ? 'border-red-500 focus-visible:ring-red-500 bg-red-500/5'
+                    : ''
+                }`}
+              />
+              {regErrors.phone && (
+                <p className="text-xs text-red-500 font-medium mt-1 animate-in fade-in duration-200">
+                  {regErrors.phone}
+                </p>
+              )}
             </div>
 
             {/* Email */}
-            <div className="space-y-1">
-              <Label htmlFor="reg-email">
-                <Mail size={14} className="inline mr-1" />Email *
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-email" className="text-sm font-medium flex items-center">
+                <Mail size={14} className="inline mr-1.5 text-muted-foreground" />Email *
               </Label>
               <Input
                 id="reg-email"
@@ -492,63 +635,66 @@ export default function WarrantyPage() {
                 placeholder="you@example.com"
                 value={regForm.email}
                 onChange={e => setRegForm(f => ({ ...f, email: e.target.value }))}
+                className="bg-background border-border/80 focus-visible:ring-primary focus-visible:ring-1 h-11"
               />
-              {regErrors.email && <p className="text-xs text-destructive">{regErrors.email}</p>}
+              {regErrors.email && <p className="text-xs text-destructive mt-1 font-medium">{regErrors.email}</p>}
             </div>
 
             {/* Address */}
-            <div className="space-y-1">
-              <Label htmlFor="reg-address">
-                <MapPin size={14} className="inline mr-1" />Address *
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-address" className="text-sm font-medium flex items-center">
+                <MapPin size={14} className="inline mr-1.5 text-muted-foreground" />Address *
               </Label>
               <Input
                 id="reg-address"
                 placeholder="Your full address"
                 value={regForm.address}
                 onChange={e => setRegForm(f => ({ ...f, address: e.target.value }))}
+                className="bg-background border-border/80 focus-visible:ring-primary focus-visible:ring-1 h-11"
               />
-              {regErrors.address && <p className="text-xs text-destructive">{regErrors.address}</p>}
+              {regErrors.address && <p className="text-xs text-destructive mt-1 font-medium">{regErrors.address}</p>}
             </div>
 
             {/* Product Number (auto-filled, disabled) */}
-            <div className="space-y-1">
-              <Label>
-                <ClipboardCheck size={14} className="inline mr-1" />Product Number
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium flex items-center">
+                <ClipboardCheck size={14} className="inline mr-1.5 text-muted-foreground" />Product Number
               </Label>
-              <Input value={selectedProduct?.serial ?? ''} disabled className="bg-muted font-mono" />
+              <Input value={selectedProduct?.serial ?? ''} disabled className="bg-muted/40 font-mono h-11 cursor-not-allowed border-border/40" />
             </div>
 
             {/* Warranty Valid Till (auto-calculated, read-only) */}
-            <div className="space-y-1">
-              <Label className="flex items-center gap-1">
-                <CalendarDays size={14} className="inline" />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <CalendarDays size={14} className="inline text-muted-foreground" />
                 Warranty Valid Till
-                <Lock size={11} className="ml-0.5 text-muted-foreground opacity-70" />
+                <Lock size={11} className="text-muted-foreground opacity-70" />
               </Label>
               <div className="relative">
                 <Input
                   type="text"
                   value={(() => {
+                    const months = selectedProduct?.warrantyMonths ?? 60;
                     const d = new Date();
-                    d.setFullYear(d.getFullYear() + 5);
+                    d.setMonth(d.getMonth() + months);
                     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
                   })()}
                   readOnly
                   tabIndex={-1}
-                  className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 select-none font-medium"
+                  className="bg-muted/40 text-muted-foreground cursor-not-allowed border-border/40 select-none font-medium h-11"
                 />
               </div>
-              <p className="text-xs text-muted-foreground/70 flex items-center gap-1 pt-0.5">
+              <p className="text-xs text-muted-foreground/75 flex items-center gap-1.5 pt-0.5">
                 <Lock size={10} />
-                Auto-calculated based on standard 5-year warranty. Not editable.
+                Auto-calculated based on standard {selectedProduct?.warrantyMonths ?? 60}-month warranty. Not editable.
               </p>
             </div>
 
-            <DialogFooter className="pt-4 flex gap-3 sticky bottom-0 bg-card pb-1">
-              <Button type="button" variant="ghost" onClick={() => setIsRegisterOpen(false)}>
+            <DialogFooter className="pt-5 mt-4 sm:mt-6 border-t border-border/30">
+              <Button type="button" variant="ghost" onClick={() => setIsRegisterOpen(false)} className="h-11 hover:bg-accent/10 border-border/60">
                 <XCircle size={16} className="mr-2" /> Cancel
               </Button>
-              <Button type="submit" disabled={isRegistering} className="bg-primary hover:bg-primary/90">
+              <Button type="submit" disabled={isRegistering} className="h-11 bg-primary hover:bg-primary/90 text-white font-medium px-6">
                 {isRegistering
                   ? <><Loader2 size={16} className="animate-spin mr-2" /> Registering…</>
                   : <><ShieldCheck size={16} className="mr-2" /> Activate Warranty</>}
@@ -586,7 +732,7 @@ export default function WarrantyPage() {
             </p>
           </div>
 
-          <DialogFooter className="flex gap-3 sm:flex-row sticky bottom-0 bg-card pt-2 pb-1">
+          <DialogFooter className="mt-4 pt-4 border-t border-border/30">
             <Button
               variant="ghost"
               className="flex-1"
@@ -603,6 +749,14 @@ export default function WarrantyPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Warranty Slip Modal ────────────────────────────────────────── */}
+      <WarrantySlipModal 
+        open={isSlipOpen}
+        onOpenChange={setIsSlipOpen}
+        registrationId={selectedProduct?.registrationId ?? ''}
+      />
+
     </div>
   );
 }
@@ -619,14 +773,12 @@ function InfoRow({
 }) {
   const isGreen = accent === 'green';
   return (
-    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${
-      isGreen
+    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${isGreen
         ? 'bg-green-500/8 border-green-500/30'
         : 'bg-background/60 border-border/50'
-    }`}>
-      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-        isGreen ? 'bg-green-500/20 text-green-400' : 'bg-primary/15 text-primary'
       }`}>
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isGreen ? 'bg-green-500/20 text-green-400' : 'bg-primary/15 text-primary'
+        }`}>
         {icon}
       </div>
       <div>

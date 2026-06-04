@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import {
   AlertTriangle, Zap, Tag, ImageIcon, Star, Shield,
-  Activity, Target, Settings2, Info, Wrench
+  Activity, Target, Settings2, Info, Wrench, Globe, BookMarked
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { DynamicListInput } from './DynamicListInput';
 import { SpecInput, Spec } from './SpecInput';
-import { ImageUploader } from './ImageUploader';
+import { GalleryUploader } from './GalleryUploader';
 import type { AdminProduct } from '../types';
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -23,17 +23,14 @@ function validate(data: Partial<AdminProduct>): FormErrors {
   if (!data.name?.trim()) e.name = 'Product name is required';
   if (!data.category) e.category = 'Please select a category';
   if (!data.powerRating?.trim()) e.powerRating = 'Power rating is required';
-  if (!data.description?.trim()) e.description = 'Description is required';
+  if (!data.description?.trim()) e.description = 'Short description is required';
   return e;
 }
 
 // ── Section wrapper ──────────────────────────────────────────────────────────
 
 function FormSection({
-  icon,
-  title,
-  subtitle,
-  children,
+  icon, title, subtitle, children,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -72,23 +69,66 @@ function FieldError({ message }: { message?: string }) {
   );
 }
 
+// ── Toggle switch ────────────────────────────────────────────────────────────
+
+function Toggle({
+  id, label, description, checked, onChange,
+}: {
+  id: string;
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex items-start gap-3 p-3 rounded-lg border border-border/50 hover:border-primary/30 hover:bg-primary/5 cursor-pointer transition-all"
+    >
+      <div className="relative shrink-0 mt-0.5">
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={e => onChange(e.target.checked)}
+          className="sr-only peer"
+        />
+        <div className="w-10 h-5 bg-muted rounded-full peer-checked:bg-primary transition-colors" />
+        <div className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+      </div>
+      <div>
+        <p className="text-sm font-medium leading-none">{label}</p>
+        {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+      </div>
+    </label>
+  );
+}
+
 // ── EMPTY state ──────────────────────────────────────────────────────────────
 
 const EMPTY: AdminProduct = {
   id: '',
   name: '',
+  slug: '',
   category: 'inverters',
   powerRating: '',
   description: '',
+  fullDescription: '',
   image: '',
+  imagePublicId: '',
+  galleryImages: [],
   performance: [],
   features: [],
   safety: [],
   idealFor: [],
   specifications: [],
   warranty: '',
+  warrantyMonths: 60,
   installation: '',
+  isPublished: false,
+  isFeatured: false,
 };
+
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -96,18 +136,19 @@ interface ProductFormProps {
   initialData?: AdminProduct;
   onSave: (product: AdminProduct) => void;
   onCancel: () => void;
+  isSaving?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps) {
+export function ProductForm({ initialData, onSave, onCancel, isSaving = false }: ProductFormProps) {
   const [data, setData] = useState<AdminProduct>(
     initialData ? { ...EMPTY, ...initialData } : { ...EMPTY }
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
 
-  // Generic field updater
   const setField = useCallback(<K extends keyof AdminProduct>(key: K, value: AdminProduct[K]) => {
     setData(prev => ({ ...prev, [key]: value }));
     if (submitted) {
@@ -139,20 +180,28 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
       setErrors(validationErrors);
       return;
     }
+    if (isUploadingGallery) return;
 
-    const product: AdminProduct = {
-      ...data,
-      id: data.id || Math.random().toString(36).substr(2, 9),
-    };
-    onSave(product);
+    // Set main image fields
+    const mainImg = data.galleryImages?.find(img => img.isMain) || data.galleryImages?.[0];
+    const finalData = { ...data };
+    if (mainImg) {
+      finalData.image = mainImg.url;
+      finalData.imagePublicId = mainImg.publicId;
+    } else {
+      finalData.image = '';
+      finalData.imagePublicId = '';
+    }
+
+    onSave(finalData);
   };
 
   const isFormValid = Object.keys(validate(data)).length === 0;
 
   return (
-    <div className="flex flex-col gap-0">
+    <>
       {/* Scrollable body */}
-      <div className="overflow-y-auto max-h-[65vh] px-1 space-y-8 pr-3 pb-4">
+      <div className="flex-1 overflow-y-auto px-6 space-y-8 pt-4 pb-6">
 
         {/* ── 1. Basic Information ─────────────────────────────── */}
         <FormSection icon={<Tag size={14} />} title="Basic Information">
@@ -190,7 +239,7 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
               <FieldError message={errors.category} />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="pf-power" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Power Rating <span className="text-destructive">*</span>
               </Label>
@@ -213,24 +262,63 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
                 value={data.description}
                 onChange={e => setField('description', e.target.value)}
                 placeholder="Brief hook for listing pages — what makes this product stand out?"
-                rows={3}
+                rows={2}
                 className={inputCls('description')}
               />
               <FieldError message={errors.description} />
             </div>
 
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="pf-full-desc" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Full Description
+              </Label>
+              <Textarea
+                id="pf-full-desc"
+                value={data.fullDescription}
+                onChange={e => setField('fullDescription', e.target.value)}
+                placeholder="Detailed product description shown on the product detail page."
+                rows={3}
+                className="bg-background/50 border-border/60 focus:border-primary/50"
+              />
+            </div>
+
           </div>
         </FormSection>
 
-        {/* ── 2. Product Image ─────────────────────────────────── */}
-        <FormSection icon={<ImageIcon size={14} />} title="Product Image">
-          <ImageUploader
-            value={data.image}
-            onChange={val => setField('image', val)}
+        {/* ── 2. Visibility ────────────────────────────────────── */}
+        <FormSection icon={<Globe size={14} />} title="Visibility & Status" subtitle="Control whether this product is visible on the website.">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Toggle
+              id="pf-published"
+              label="Published"
+              description="Show this product on the public website."
+              checked={data.isPublished}
+              onChange={v => setField('isPublished', v)}
+            />
+            <Toggle
+              id="pf-featured"
+              label="Featured"
+              description="Highlight this product in the featured section."
+              checked={data.isFeatured}
+              onChange={v => setField('isFeatured', v)}
+            />
+          </div>
+        </FormSection>
+
+        {/* ── 3. Product Gallery ─────────────────────────────────── */}
+        <FormSection
+          icon={<ImageIcon size={14} />}
+          title="Product Gallery"
+          subtitle="Upload up to 8 images. Select one as the main image for listing cards."
+        >
+          <GalleryUploader
+            images={data.galleryImages || []}
+            onChange={imgs => setField('galleryImages', imgs)}
+            onUploadingChange={setIsUploadingGallery}
           />
         </FormSection>
 
-        {/* ── 3. Performance Highlights ────────────────────────── */}
+        {/* ── 4. Performance Highlights ────────────────────────── */}
         <FormSection
           icon={<Activity size={14} />}
           title="Performance Highlights"
@@ -244,7 +332,7 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
           />
         </FormSection>
 
-        {/* ── 4. Key Features ──────────────────────────────────── */}
+        {/* ── 5. Key Features ──────────────────────────────────── */}
         <FormSection
           icon={<Star size={14} />}
           title="Key Features"
@@ -258,7 +346,7 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
           />
         </FormSection>
 
-        {/* ── 5. Safety & Protection ───────────────────────────── */}
+        {/* ── 6. Safety & Protection ───────────────────────────── */}
         <FormSection
           icon={<Shield size={14} />}
           title="Safety & Protection"
@@ -272,7 +360,7 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
           />
         </FormSection>
 
-        {/* ── 6. Ideal For ─────────────────────────────────────── */}
+        {/* ── 7. Ideal For ─────────────────────────────────────── */}
         <FormSection
           icon={<Target size={14} />}
           title="Ideal For"
@@ -286,7 +374,7 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
           />
         </FormSection>
 
-        {/* ── 7. Technical Specifications ──────────────────────── */}
+        {/* ── 8. Technical Specifications ──────────────────────── */}
         <FormSection
           icon={<Settings2 size={14} />}
           title="Technical Specifications"
@@ -298,25 +386,40 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
           />
         </FormSection>
 
-        {/* ── 8. Additional Info ───────────────────────────────── */}
+        {/* ── 9. Additional Info ───────────────────────────────── */}
         <FormSection
           icon={<Info size={14} />}
           title="Additional Info"
           subtitle="Warranty and installation details shown at the bottom of the product page."
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-warranty" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Wrench size={11} /> Warranty Label
+                </Label>
+                <Input
+                  id="pf-warranty"
+                  value={data.warranty}
+                  onChange={e => setField('warranty', e.target.value)}
+                  placeholder="e.g. 2 Years Standard Warranty"
+                  className="bg-background/50 border-border/60 focus:border-primary/50"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="pf-warranty" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                <Wrench size={11} /> Warranty
-              </Label>
-              <Input
-                id="pf-warranty"
-                value={data.warranty}
-                onChange={e => setField('warranty', e.target.value)}
-                placeholder="e.g. 2 Years Standard Warranty"
-                className="bg-background/50 border-border/60 focus:border-primary/50"
-              />
+              <div className="space-y-1.5">
+                <Label htmlFor="pf-warranty-months" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Wrench size={11} /> Warranty (Months)
+                </Label>
+                <Input
+                  id="pf-warranty-months"
+                  type="number"
+                  min={0}
+                  value={data.warrantyMonths}
+                  onChange={e => setField('warrantyMonths', Number(e.target.value))}
+                  className="bg-background/50 border-border/60 focus:border-primary/50"
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -331,37 +434,45 @@ export function ProductForm({ initialData, onSave, onCancel }: ProductFormProps)
                 className="bg-background/50 border-border/60 focus:border-primary/50"
               />
             </div>
-
           </div>
         </FormSection>
 
       </div>
 
       {/* ── Footer buttons ──────────────────────────────────────── */}
-      <div className="flex items-center justify-between pt-4 mt-2 border-t border-border/40">
-        <p className="text-xs text-muted-foreground">
-          <span className="text-destructive">*</span> Required fields
-        </p>
-        <div className="flex gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            className="border-border/60 hover:border-border"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitted && !isFormValid}
-            className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed min-w-[130px]"
-          >
-            <Zap size={15} className="mr-2" />
-            {initialData ? 'Update Product' : 'Save Product'}
-          </Button>
+      <div className="sticky bottom-0 border-t bg-background px-6 py-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            <span className="text-destructive">*</span> Required fields
+          </p>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isSaving}
+              className="border-border/60 hover:border-border"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={(submitted && !isFormValid) || isSaving || isUploadingGallery}
+              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed min-w-[130px]"
+            >
+              <Zap size={15} className="mr-2" />
+              {isSaving
+                ? 'Saving…'
+                : isUploadingGallery
+                ? 'Uploading images…'
+                : initialData
+                ? 'Update Product'
+                : 'Save Product'}
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
