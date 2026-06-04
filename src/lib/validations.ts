@@ -32,29 +32,7 @@ export const addAdminSchema = z.object({
   password: passwordSchema,
 });
 
-export const phoneSchema = z.string()
-  .trim()
-  .min(1, "Phone number is required")
-  .regex(/^\+?[0-9\s-]{7,15}$/, "Please enter a valid phone number")
-  .transform(value => value.replace(/[\s-]/g, ''));
 
-export const addAppUserSchema = z.object({
-  name: z.string()
-    .trim()
-    .min(3, "Full name must be at least 3 characters")
-    .regex(/[a-zA-Z]/, "Name must contain letters"),
-  email: z.string()
-    .trim()
-    .min(1, "Email is required")
-    .email("Please enter a valid email address")
-    .toLowerCase(),
-  phone: phoneSchema,
-  password: passwordSchema,
-  confirmPassword: z.string().min(1, "Please confirm the password"),
-}).refine(data => data.password === data.confirmPassword, {
-  path: ['confirmPassword'],
-  message: "Passwords do not match",
-});
 
 const todayDate = () => {
   const now = new Date();
@@ -130,7 +108,6 @@ export const productSchema = z.object({
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type AddAdminFormData = z.infer<typeof addAdminSchema>;
-export type AddAppUserFormData = z.infer<typeof addAppUserSchema>;
 export type AddManufacturedUnitFormData = z.infer<typeof addManufacturedUnitSchema>;
 
 export type PasswordStrengthCondition = {
