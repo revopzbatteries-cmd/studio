@@ -112,7 +112,7 @@ export function Footer() {
               </li>
               <li className="flex items-center space-x-3">
                 <Mail size={16} className="text-primary" />
-                <span>info@revopz.com</span>
+                <span>revopzbatteries@gmail.com</span>
               </li>
               <li className="flex items-start space-x-3">
                 <MapPin size={16} className="text-primary mt-1" />

@@ -33,19 +33,19 @@ export default function CareersPage() {
             {/* Glow Accent */}
             <div className="absolute -top-24 -left-24 w-48 h-48 bg-primary/10 rounded-full blur-[80px]" />
             <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-primary/10 rounded-full blur-[80px]" />
-            
+
             <div className="space-y-6 relative z-10">
               <div className="flex justify-center">
                 <Badge variant="outline" className="px-4 py-1 border-primary/30 text-primary bg-primary/5 rounded-full text-xs font-medium tracking-widest uppercase">
                   Current Status: Closed
                 </Badge>
               </div>
-              
+
               <h2 className="text-3xl md:text-4xl font-bold font-headline tracking-tight">No Current Openings</h2>
-              
+
               <div className="space-y-4 text-muted-foreground max-w-[600px] mx-auto text-lg leading-relaxed">
                 <p>
-                  We are not hiring at the moment, but we are always looking for passionate talent. 
+                  We are not hiring at the moment, but we are always looking for passionate talent.
                   Please check back later for future opportunities at REVOPZ.
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-2">
@@ -55,7 +55,7 @@ export default function CareersPage() {
                   </p>
                 </div>
               </div>
-              
+
               <div className="pt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button asChild className="bg-primary hover:bg-primary/90 px-8 h-12 rounded-full group">
                   <Link href="/contact" className="flex items-center gap-2">
@@ -63,8 +63,8 @@ export default function CareersPage() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline" className="border-border hover:bg-muted/50 px-8 h-12 rounded-full">
-                  <a href="mailto:info@revopz.com" className="flex items-center gap-2">
-                    <Mail size={18} /> info@revopz.com
+                  <a href="mailto:revopzbatteries@gmail.com" className="flex items-center gap-2">
+                    <Mail size={18} /> revopzbatteries@gmail.com
                   </a>
                 </Button>
               </div>
