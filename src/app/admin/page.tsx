@@ -40,6 +40,8 @@ import {
   Star,
   Filter,
   QrCode,
+  ChevronLeft,
+  Menu,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -110,6 +112,8 @@ export default function AdminPage() {
 
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // Login State
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -289,69 +293,103 @@ export default function AdminPage() {
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      <aside className="w-full md:w-64 border-r bg-card flex flex-col">
-        <div className="p-6 border-b flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <LayoutDashboard size={18} className="text-white" />
+    <div className="min-h-screen bg-background flex flex-col md:flex-row relative overflow-x-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 md:sticky md:top-0 md:h-screen md:z-0 flex flex-col bg-card border-r transition-all duration-300 ease-in-out overflow-hidden shrink-0
+          ${sidebarOpen
+            ? 'w-64 translate-x-0 opacity-100'
+            : 'w-0 -translate-x-full md:translate-x-0 md:w-0 opacity-0'
+          }`}
+      >
+        <div className="p-6 border-b flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <LayoutDashboard size={18} className="text-white" />
+            </div>
+            <span className="font-headline font-bold text-lg tracking-tight whitespace-nowrap">REVOPZ Admin</span>
           </div>
-          <span className="font-headline font-bold text-lg tracking-tight">REVOPZ Admin</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(false)}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center shrink-0"
+            title="Collapse Sidebar"
+          >
+            <ChevronLeft size={16} className="md:block hidden" />
+            <X size={16} className="md:hidden block" />
+          </Button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto whitespace-nowrap">
           <Can permissions={permissions} perform="manage_admins">
-            <SidebarButton active={resolvedTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserCircle size={20} />} label="Admin Profile" />
+            <SidebarButton active={resolvedTab === 'profile'} onClick={() => { setActiveTab('profile'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<UserCircle size={20} />} label="Admin Profile" />
           </Can>
           <Can permissions={permissions} perform="manage_products">
-            <SidebarButton active={resolvedTab === 'products'} onClick={() => setActiveTab('products')} icon={<Package size={20} />} label="Product Mgmt" />
+            <SidebarButton active={resolvedTab === 'products'} onClick={() => { setActiveTab('products'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Package size={20} />} label="Product Mgmt" />
           </Can>
           <Can permissions={permissions} perform="manage_users">
-            <SidebarButton active={resolvedTab === 'users'} onClick={() => setActiveTab('users')} icon={<Users size={20} />} label="User Mgmt" />
+            <SidebarButton active={resolvedTab === 'users'} onClick={() => { setActiveTab('users'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Users size={20} />} label="User Mgmt" />
           </Can>
           <Can permissions={permissions} perform="manage_units">
-            <SidebarButton active={resolvedTab === 'units'} onClick={() => setActiveTab('units')} icon={<Factory size={20} />} label="Manufactured Units" />
+            <SidebarButton active={resolvedTab === 'units'} onClick={() => { setActiveTab('units'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Factory size={20} />} label="Manufactured Units" />
           </Can>
           <Can permissions={permissions} perform="view_warranty">
-            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => setActiveTab('warranty')} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
+            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => { setActiveTab('warranty'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
           </Can>
           <Can permissions={permissions} perform="manage_careers">
-            <SidebarButton active={resolvedTab === 'careers'} onClick={() => setActiveTab('careers')} icon={<Briefcase size={20} />} label="Career Mgmt" />
-            <SidebarButton active={resolvedTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<FileText size={20} />} label="Applications" />
+            <SidebarButton active={resolvedTab === 'careers'} onClick={() => { setActiveTab('careers'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Briefcase size={20} />} label="Career Mgmt" />
+            <SidebarButton active={resolvedTab === 'applications'} onClick={() => { setActiveTab('applications'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<FileText size={20} />} label="Applications" />
           </Can>
         </nav>
 
-        <div className="p-4 border-t space-y-1">
-          {/* Edit Profile — accessible to every role */}
+        <div className="p-4 border-t space-y-1 whitespace-nowrap">
           <Button
             variant="ghost"
-            className="w-full justify-start text-muted-foreground hover:text-primary hover:bg-primary/10"
-            onClick={() => setIsEditProfileOpen(true)}
+            className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            onClick={() => { setLogoutDialogOpen(true); if (window.innerWidth < 768) setSidebarOpen(false); }}
           >
-            <Pencil size={18} className="mr-3" /> Edit Profile
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
             <LogOut size={20} className="mr-3" /> Logout
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6 md:p-10">
+      <main className="flex-1 overflow-auto p-6 md:p-10 transition-all duration-300 ease-in-out">
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold font-headline capitalize">
-                {resolvedTab === 'profile' ? 'Profile Management' :
-                  resolvedTab === 'products' ? 'Product Catalog' :
-                    resolvedTab === 'users' ? 'User Management' :
-                      resolvedTab === 'units' ? 'Manufactured Units' :
-                        resolvedTab === 'warranty' ? 'Warranty Registry' :
-                          resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
-              </h1>
-              <p className="text-muted-foreground">
-                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
-                  resolvedTab === 'users' ? 'Create and manage mobile application users.' :
-                    'Manage your REVOPZ system operations and data.'}
-              </p>
+            <div className="flex items-start gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-300 md:inline-flex flex shrink-0 items-center justify-center
+                  ${sidebarOpen ? 'md:hidden' : ''}`}
+                title={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"}
+              >
+                <Menu size={22} />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold font-headline capitalize leading-none mb-1">
+                  {resolvedTab === 'profile' ? 'Profile Management' :
+                    resolvedTab === 'products' ? 'Product Catalog' :
+                      resolvedTab === 'users' ? 'User Management' :
+                        resolvedTab === 'units' ? 'Manufactured Units' :
+                          resolvedTab === 'warranty' ? 'Warranty Registry' :
+                            resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
+                </h1>
+                <p className="text-muted-foreground text-sm">
+                  {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
+                    resolvedTab === 'users' ? 'Create and manage mobile application users.' :
+                      'Manage your REVOPZ system operations and data.'}
+                </p>
+              </div>
             </div>
 
             {/* Live admin profile badge (top-right) */}
@@ -383,6 +421,27 @@ export default function AdminPage() {
                 // Profile refreshes automatically via AuthContext onAuthStateChanged
               }}
             />
+
+            {/* Logout Confirmation Dialog */}
+            <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+              <AlertDialogContent className="bg-card">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-lg">Logout</AlertDialogTitle>
+                  <AlertDialogDescription className="text-sm leading-relaxed">
+                    Are you sure you want to logout from REVOPZ Admin?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="mt-2">
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleLogout}
+                    className="bg-destructive hover:bg-destructive/90 text-white"
+                  >
+                    Logout
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'products' && <ProductSection permissions={permissions} />}
@@ -474,6 +533,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Authentication required');
 
+      console.log(`[handleDeleteAdmin] Sending DELETE request for UID: ${targetUid}`);
       const response = await fetch(`/api/admin/admins?uid=${targetUid}`, {
         method: 'DELETE',
         headers: {
@@ -482,12 +542,24 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || 'Failed to remove administrator');
+        let errorMessage = 'Failed to remove administrator';
+        try {
+          const payload = await response.json();
+          errorMessage = payload?.error || errorMessage;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
       }
 
       toast({ title: 'Admin Removed', description: 'The administrator has been successfully deleted.' });
-      await loadAdmins();
+      
+      // Update UI immediately
+      setAdmins(prev => prev.filter(a => a.id !== targetUid));
+      
+      // Sync list in background
+      loadAdmins();
     } catch (err: any) {
       toast({
         title: 'Removal Failed',
@@ -509,6 +581,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Authentication required');
 
+      console.log(`[handleToggleSuspendAdmin] Sending PATCH request to set status of ${targetAdmin.id} to ${newStatus}`);
       const response = await fetch('/api/admin/admins', {
         method: 'PATCH',
         headers: {
@@ -519,15 +592,33 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || `Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} administrator`);
+        let errorMessage = `Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} administrator`;
+        try {
+          const payload = await response.json();
+          errorMessage = payload?.error || errorMessage;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
       }
 
       toast({
         title: isCurrentlySuspended ? 'Admin Activated' : 'Admin Suspended',
         description: `The administrator has been successfully ${isCurrentlySuspended ? 'activated' : 'suspended'}.`,
       });
-      await loadAdmins();
+
+      // Update UI immediately
+      setAdmins(prev =>
+        prev.map(a =>
+          a.id === targetAdmin.id
+            ? { ...a, status: newStatus }
+            : a
+        )
+      );
+
+      // Sync list in background
+      loadAdmins();
     } catch (err: any) {
       toast({
         title: 'Action Failed',
@@ -874,8 +965,9 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                           {/* Reset Pass Dialog */}
                           <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
                             <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
-                                <Key size={14} className="mr-1" /> Reset Pass
+                              <Button variant="ghost" size="sm" className="hover:text-primary h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px]" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
+                                <Key size={14} />
+                                <span className="font-medium">Reset Pass</span>
                               </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-card sm:max-w-sm">
@@ -917,18 +1009,20 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                                     variant="ghost"
                                     size="sm"
                                     disabled={admin.id === adminProfile.uid || isSuspendingAdmin === admin.id}
-                                    className={`text-xs ${admin.status === 'suspended' ? 'text-green-500 hover:bg-green-500/10 hover:text-green-600' : 'text-orange-500 hover:bg-orange-500/10 hover:text-orange-600'}`}
+                                    className={`h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px] ${admin.status === 'suspended' ? 'text-green-500 hover:bg-green-500/10 hover:text-green-600' : 'text-orange-500 hover:bg-orange-500/10 hover:text-orange-600'}`}
                                     onClick={() => setSuspendTarget(admin)}
                                   >
                                     {isSuspendingAdmin === admin.id ? (
                                       <Loader2 size={14} className="animate-spin" />
                                     ) : admin.status === 'suspended' ? (
                                       <>
-                                        <ShieldCheck size={14} className="mr-1" /> Activate
+                                        <ShieldCheck size={14} />
+                                        <span className="font-medium">Activate</span>
                                       </>
                                     ) : (
                                       <>
-                                        <ShieldOff size={14} className="mr-1" /> Suspend
+                                        <ShieldOff size={14} />
+                                        <span className="font-medium">Suspend</span>
                                       </>
                                     )}
                                   </Button>
@@ -963,14 +1057,15 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                                     variant="ghost"
                                     size="sm"
                                     disabled={admin.id === adminProfile.uid || isDeletingAdmin === admin.id}
-                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px]"
                                     onClick={() => setDeleteTarget(admin)}
                                   >
                                     {isDeletingAdmin === admin.id ? (
                                       <Loader2 size={14} className="animate-spin" />
                                     ) : (
                                       <>
-                                        <Trash2 size={14} className="mr-1" /> Remove
+                                        <Trash2 size={14} />
+                                        <span className="font-medium">Remove</span>
                                       </>
                                     )}
                                   </Button>

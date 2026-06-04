@@ -181,9 +181,11 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
+    console.log(`[PATCH /api/admin/admins] Requester ${requestorUid} attempting to update admin status of ${uid} to ${status}`);
     const adminRef = adminDb.collection('admins').doc(uid);
     const adminSnap = await adminRef.get();
     if (!adminSnap.exists) {
+      console.warn(`[PATCH /api/admin/admins] Admin user ${uid} not found in Firestore`);
       return NextResponse.json({ error: 'Admin user not found.' }, { status: 404 });
     }
 
@@ -193,16 +195,18 @@ export async function PATCH(request: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: requestorUid,
     });
+    console.log(`[PATCH /api/admin/admins] Updated Firestore status for admin ${uid}`);
 
     // Enable/Disable user in Firebase Auth
     await adminAuth.updateUser(uid, {
       disabled: status !== 'active',
     });
+    console.log(`[PATCH /api/admin/admins] Updated Firebase Auth state (disabled: ${status !== 'active'}) for admin ${uid}`);
 
     return NextResponse.json({ success: true, uid, status });
   } catch (err: any) {
-    console.error('[PATCH /api/admin/admins] Failed to update admin status:', err.message);
-    return NextResponse.json({ error: 'Failed to update admin status.' }, { status: 500 });
+    console.error('[PATCH /api/admin/admins] Failed to update admin status:', err);
+    return NextResponse.json({ error: err.message || 'Failed to update admin status.' }, { status: 500 });
   }
 }
 
@@ -226,28 +230,33 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    console.log(`[DELETE /api/admin/admins] Requester ${requestorUid} attempting to delete admin user ${uid}`);
     const adminRef = adminDb.collection('admins').doc(uid);
     const adminSnap = await adminRef.get();
     if (!adminSnap.exists) {
+      console.warn(`[DELETE /api/admin/admins] Admin user ${uid} not found in Firestore`);
       return NextResponse.json({ error: 'Admin user not found in Firestore.' }, { status: 404 });
     }
 
     // Delete from Firebase Auth
     try {
       await adminAuth.deleteUser(uid);
+      console.log(`[DELETE /api/admin/admins] Successfully deleted Auth record for admin ${uid}`);
     } catch (authErr: any) {
       if (authErr?.code !== 'auth/user-not-found') {
-        console.error('[DELETE /api/admin/admins] Auth delete user failed:', authErr.message);
+        console.error('[DELETE /api/admin/admins] Auth delete user failed:', authErr);
         throw authErr;
       }
+      console.warn(`[DELETE /api/admin/admins] Auth user ${uid} was not found (already deleted in Auth)`);
     }
 
     // Delete from Firestore
     await adminRef.delete();
+    console.log(`[DELETE /api/admin/admins] Successfully deleted Firestore record for admin ${uid}`);
 
     return NextResponse.json({ success: true, uid });
   } catch (err: any) {
-    console.error('[DELETE /api/admin/admins] Failed to delete admin:', err.message);
-    return NextResponse.json({ error: 'Failed to delete admin.' }, { status: 500 });
+    console.error('[DELETE /api/admin/admins] Failed to delete admin:', err);
+    return NextResponse.json({ error: err.message || 'Failed to delete admin.' }, { status: 500 });
   }
 }
