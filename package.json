@@ -9,7 +9,9 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postbuild": "next-sitemap"
+
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",
@@ -46,6 +48,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.475.0",
     "next": "15.5.9",
+    "next-sitemap": "^4.2.3",
     "patch-package": "^8.0.0",
     "react": "^19.2.1",
     "react-day-picker": "^9.11.3",
