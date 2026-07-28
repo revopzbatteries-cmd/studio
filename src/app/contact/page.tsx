@@ -137,11 +137,11 @@ export default function ContactPage() {
       setIsSubmittingDealer(true);
       try {
         await submitToGoogleForm(DEALER_FORM_ACTION, {
-          'entry.742173392':  dealerBusinessName,
+          'entry.742173392': dealerBusinessName,
           'entry.2083567702': dealerContactPerson,
-          'entry.909203719':  dealerEmail,
+          'entry.909203719': dealerEmail,
           'entry.1600660088': dealerPhone,
-          'entry.566495979':  dealerLocation,
+          'entry.566495979': dealerLocation,
           'entry.1059360787': dealerBizDetails,
         });
         toast({
@@ -223,8 +223,8 @@ export default function ContactPage() {
               <ContactItem
                 icon={<Mail className="text-primary" />}
                 title="Email"
-                value="info@revopz.com"
-                href="mailto:info@revopz.com"
+                value="revopzbatteries@gmail.com"
+                href="mailto:revopzbatteries@gmail.com"
               />
               <ContactItem
                 icon={<MapPin className="text-primary" />}

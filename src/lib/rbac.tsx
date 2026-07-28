@@ -11,7 +11,6 @@ export type Role = 'Manager' | 'Product Manager' | 'Production Unit';
 export type Permission =
   | 'manage_admins'
   | 'reset_passwords'
-  | 'manage_users'
   | 'manage_products'
   | 'manage_units'   // view the units module (sidebar access)
   | 'add_units'      // can add new manufactured units
@@ -27,7 +26,6 @@ export const ROLE_PERMISSIONS: Record<FirestoreRole, Permission[]> = {
   manager: [
     'manage_admins',
     'reset_passwords',
-    'manage_users',
     'manage_products',
     'manage_units',
     'add_units',

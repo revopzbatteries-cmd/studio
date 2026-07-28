@@ -40,6 +40,8 @@ import {
   Star,
   Filter,
   QrCode,
+  ChevronLeft,
+  Menu,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -63,13 +65,7 @@ import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Role, Can, hasPermission, toDisplayRole, getEffectivePermissions } from '@/lib/rbac';
 import { AdminProfile, getInitials } from '@/lib/adminService';
-import {
-  appUserEmailExists,
-  createAppUser,
-  type AppUser,
-  type AppUserStatus,
-} from '@/lib/appUsers';
-import { useAppUsers } from '@/hooks/useAppUsers';
+
 import {
   addManufacturedUnit,
   manufacturedUnitNumberExists,
@@ -85,12 +81,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   loginSchema,
   addAdminSchema,
-  addAppUserSchema,
   addManufacturedUnitSchema,
   normalizeProductNumber,
   type LoginFormData,
   type AddAdminFormData,
-  type AddAppUserFormData,
   type AddManufacturedUnitFormData,
   checkPasswordStrength,
 } from '@/lib/validations';
@@ -101,6 +95,7 @@ type AdminUser = {
   name: string;
   email: string;
   role: Role;
+  status?: string;
 };
 
 export default function AdminPage() {
@@ -109,6 +104,8 @@ export default function AdminPage() {
 
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // Login State
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -288,69 +285,99 @@ export default function AdminPage() {
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      <aside className="w-full md:w-64 border-r bg-card flex flex-col">
-        <div className="p-6 border-b flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <LayoutDashboard size={18} className="text-white" />
+    <div className="min-h-screen bg-background flex flex-col md:flex-row relative overflow-x-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 md:sticky md:top-0 md:h-screen md:z-0 flex flex-col bg-card border-r transition-all duration-300 ease-in-out overflow-hidden shrink-0
+          ${sidebarOpen
+            ? 'w-64 translate-x-0 opacity-100'
+            : 'w-0 -translate-x-full md:translate-x-0 md:w-0 opacity-0'
+          }`}
+      >
+        <div className="p-6 border-b flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <LayoutDashboard size={18} className="text-white" />
+            </div>
+            <span className="font-headline font-bold text-lg tracking-tight whitespace-nowrap">REVOPZ Admin</span>
           </div>
-          <span className="font-headline font-bold text-lg tracking-tight">REVOPZ Admin</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(false)}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center shrink-0"
+            title="Collapse Sidebar"
+          >
+            <ChevronLeft size={16} className="md:block hidden" />
+            <X size={16} className="md:hidden block" />
+          </Button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto whitespace-nowrap">
           <Can permissions={permissions} perform="manage_admins">
-            <SidebarButton active={resolvedTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserCircle size={20} />} label="Admin Profile" />
+            <SidebarButton active={resolvedTab === 'profile'} onClick={() => { setActiveTab('profile'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<UserCircle size={20} />} label="Admin Profile" />
           </Can>
           <Can permissions={permissions} perform="manage_products">
-            <SidebarButton active={resolvedTab === 'products'} onClick={() => setActiveTab('products')} icon={<Package size={20} />} label="Product Mgmt" />
+            <SidebarButton active={resolvedTab === 'products'} onClick={() => { setActiveTab('products'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Package size={20} />} label="Product Mgmt" />
           </Can>
-          <Can permissions={permissions} perform="manage_users">
-            <SidebarButton active={resolvedTab === 'users'} onClick={() => setActiveTab('users')} icon={<Users size={20} />} label="User Mgmt" />
-          </Can>
+
           <Can permissions={permissions} perform="manage_units">
-            <SidebarButton active={resolvedTab === 'units'} onClick={() => setActiveTab('units')} icon={<Factory size={20} />} label="Manufactured Units" />
+            <SidebarButton active={resolvedTab === 'units'} onClick={() => { setActiveTab('units'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Factory size={20} />} label="Manufactured Units" />
           </Can>
           <Can permissions={permissions} perform="view_warranty">
-            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => setActiveTab('warranty')} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
+            <SidebarButton active={resolvedTab === 'warranty'} onClick={() => { setActiveTab('warranty'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<ShieldCheck size={20} />} label="Warranty Mgmt" />
           </Can>
           <Can permissions={permissions} perform="manage_careers">
-            <SidebarButton active={resolvedTab === 'careers'} onClick={() => setActiveTab('careers')} icon={<Briefcase size={20} />} label="Career Mgmt" />
-            <SidebarButton active={resolvedTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<FileText size={20} />} label="Applications" />
+            <SidebarButton active={resolvedTab === 'careers'} onClick={() => { setActiveTab('careers'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<Briefcase size={20} />} label="Career Mgmt" />
+            <SidebarButton active={resolvedTab === 'applications'} onClick={() => { setActiveTab('applications'); if (window.innerWidth < 768) setSidebarOpen(false); }} icon={<FileText size={20} />} label="Applications" />
           </Can>
         </nav>
 
-        <div className="p-4 border-t space-y-1">
-          {/* Edit Profile — accessible to every role */}
+        <div className="p-4 border-t space-y-1 whitespace-nowrap">
           <Button
             variant="ghost"
-            className="w-full justify-start text-muted-foreground hover:text-primary hover:bg-primary/10"
-            onClick={() => setIsEditProfileOpen(true)}
+            className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            onClick={() => { setLogoutDialogOpen(true); if (window.innerWidth < 768) setSidebarOpen(false); }}
           >
-            <Pencil size={18} className="mr-3" /> Edit Profile
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={handleLogout}>
             <LogOut size={20} className="mr-3" /> Logout
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6 md:p-10">
+      <main className="flex-1 overflow-auto p-6 md:p-10 transition-all duration-300 ease-in-out">
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold font-headline capitalize">
-                {resolvedTab === 'profile' ? 'Profile Management' :
-                  resolvedTab === 'products' ? 'Product Catalog' :
-                    resolvedTab === 'users' ? 'User Management' :
+            <div className="flex items-start gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-300 md:inline-flex flex shrink-0 items-center justify-center
+                  ${sidebarOpen ? 'md:hidden' : ''}`}
+                title={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"}
+              >
+                <Menu size={22} />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold font-headline capitalize leading-none mb-1">
+                  {resolvedTab === 'profile' ? 'Profile Management' :
+                    resolvedTab === 'products' ? 'Product Catalog' :
                       resolvedTab === 'units' ? 'Manufactured Units' :
                         resolvedTab === 'warranty' ? 'Warranty Registry' :
                           resolvedTab === 'careers' ? 'Career Management' : 'Job Applications'}
-              </h1>
-              <p className="text-muted-foreground">
-                {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
-                  resolvedTab === 'users' ? 'Create and manage mobile application users.' :
+                </h1>
+                <p className="text-muted-foreground text-sm">
+                  {resolvedTab === 'units' ? 'Manage manufactured products and track warranty-ready units.' :
                     'Manage your REVOPZ system operations and data.'}
-              </p>
+                </p>
+              </div>
             </div>
 
             {/* Live admin profile badge (top-right) */}
@@ -383,9 +410,29 @@ export default function AdminPage() {
               }}
             />
 
+            {/* Logout Confirmation Dialog */}
+            <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+              <AlertDialogContent className="bg-card">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-lg">Logout</AlertDialogTitle>
+                  <AlertDialogDescription className="text-sm leading-relaxed">
+                    Are you sure you want to logout from REVOPZ Admin?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="mt-2">
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleLogout}
+                    className="bg-destructive hover:bg-destructive/90 text-white"
+                  >
+                    Logout
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             {resolvedTab === 'profile' && <ProfileSection admins={admins} setAdmins={setAdmins} permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'products' && <ProductSection permissions={permissions} />}
-            {resolvedTab === 'users' && <UserManagementSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'units' && <ManufacturedUnitsSection permissions={permissions} adminProfile={adminProfile} />}
             {resolvedTab === 'warranty' && <WarrantyManagementSection warranties={warranties} permissions={permissions} />}
             {resolvedTab === 'careers' && <CareerManagementSection jobs={jobs} setJobs={handleUpdateJobs} permissions={permissions} />}
@@ -424,6 +471,10 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [resetAdmin, setResetAdmin] = useState<AdminUser | null>(null);
   const [resetPasswordVal, setResetPasswordVal] = useState('');
+  const [isDeletingAdmin, setIsDeletingAdmin] = useState<string | null>(null);
+  const [isSuspendingAdmin, setIsSuspendingAdmin] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<AdminUser | null>(null);
 
   // ── Load all admins from API on mount ─────────────────────────────────────
   const loadAdmins = async () => {
@@ -448,6 +499,7 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
         name: a.name,
         email: a.email,
         role: toDisplayRole(a.role),
+        status: a.status ?? 'active',
       }));
       setAdmins(mapped);
     } catch (err) {
@@ -461,6 +513,110 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
     loadAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleDeleteAdmin = async (targetUid: string) => {
+    setIsDeletingAdmin(targetUid);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Authentication required');
+
+      console.log(`[handleDeleteAdmin] Sending DELETE request for UID: ${targetUid}`);
+      const response = await fetch(`/api/admin/admins?uid=${targetUid}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to remove administrator';
+        try {
+          const payload = await response.json();
+          errorMessage = payload?.error || errorMessage;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
+      }
+
+      toast({ title: 'Admin Removed', description: 'The administrator has been successfully deleted.' });
+      
+      // Update UI immediately
+      setAdmins(prev => prev.filter(a => a.id !== targetUid));
+      
+      // Sync list in background
+      loadAdmins();
+    } catch (err: any) {
+      toast({
+        title: 'Removal Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingAdmin(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleToggleSuspendAdmin = async (targetAdmin: AdminUser) => {
+    const isCurrentlySuspended = targetAdmin.status === 'suspended';
+    const newStatus = isCurrentlySuspended ? 'active' : 'suspended';
+    setIsSuspendingAdmin(targetAdmin.id);
+
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Authentication required');
+
+      console.log(`[handleToggleSuspendAdmin] Sending PATCH request to set status of ${targetAdmin.id} to ${newStatus}`);
+      const response = await fetch('/api/admin/admins', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ uid: targetAdmin.id, status: newStatus }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Failed to ${isCurrentlySuspended ? 'activate' : 'suspend'} administrator`;
+        try {
+          const payload = await response.json();
+          errorMessage = payload?.error || errorMessage;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
+      }
+
+      toast({
+        title: isCurrentlySuspended ? 'Admin Activated' : 'Admin Suspended',
+        description: `The administrator has been successfully ${isCurrentlySuspended ? 'activated' : 'suspended'}.`,
+      });
+
+      // Update UI immediately
+      setAdmins(prev =>
+        prev.map(a =>
+          a.id === targetAdmin.id
+            ? { ...a, status: newStatus }
+            : a
+        )
+      );
+
+      // Sync list in background
+      loadAdmins();
+    } catch (err: any) {
+      toast({
+        title: 'Action Failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSuspendingAdmin(null);
+      setSuspendTarget(null);
+    }
+  };
 
   // ── React Hook Form setup ──────────────────────────────────────────────────
   const {
@@ -781,44 +937,147 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
                     <TableCell className="font-medium">{admin.name}</TableCell>
                     <TableCell className="text-muted-foreground">{admin.email}</TableCell>
                     <TableCell>
-                      {getRoleBadge(admin.role)}
+                      <div className="flex items-center gap-2">
+                        {getRoleBadge(admin.role)}
+                        {admin.status === 'suspended' && (
+                          <Badge className="bg-red-600 text-white uppercase text-[10px] font-bold tracking-wider px-1.5 py-0.5">
+                            Suspended
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <Can permissions={permissions} perform="reset_passwords">
                       <TableCell className="text-right">
-                        <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="hover:text-primary text-xs" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
-                              <Key size={14} className="mr-1" /> Reset Pass
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="bg-card sm:max-w-sm">
-                            <DialogHeader>
-                              <DialogTitle>Reset Password</DialogTitle>
-                              <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4 space-y-4">
-                              <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
-                                <span className="text-sm text-muted-foreground">New Password</span>
-                                <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
-                                <div className="flex gap-2">
-                                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
-                                    <Copy size={14} className="mr-2" /> Copy
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
-                                    <RefreshCcw size={14} className="mr-1" /> Regenerate
-                                  </Button>
+                        <div className="flex justify-end items-center gap-1.5">
+                          {/* Reset Pass Dialog */}
+                          <Dialog open={resetAdmin?.id === admin.id} onOpenChange={(open) => { if (!open) { setResetAdmin(null); setResetPasswordVal(''); } }}>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="hover:text-primary h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px]" onClick={() => { setResetAdmin(admin); handleGenerateResetPassword(); }}>
+                                <Key size={14} />
+                                <span className="font-medium">Reset Pass</span>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-card sm:max-w-sm">
+                              <DialogHeader>
+                                <DialogTitle>Reset Password</DialogTitle>
+                                <DialogDescription>Generate a new password for {admin.name}.</DialogDescription>
+                              </DialogHeader>
+                              <div className="py-4 space-y-4">
+                                <div className="p-4 bg-muted/50 rounded-lg border flex flex-col items-center justify-center space-y-3">
+                                  <span className="text-sm text-muted-foreground">New Password</span>
+                                  <span className="font-mono text-lg font-bold tracking-wider break-all text-center">{resetPasswordVal}</span>
+                                  <div className="flex gap-2">
+                                    <Button variant="secondary" size="sm" onClick={() => copyToClipboard(resetPasswordVal)}>
+                                      <Copy size={14} className="mr-2" /> Copy
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={handleGenerateResetPassword}>
+                                      <RefreshCcw size={14} className="mr-1" /> Regenerate
+                                    </Button>
+                                  </div>
                                 </div>
+                                <p className="text-xs text-muted-foreground text-center">
+                                  This password meets all security requirements. Share it securely with the administrator.
+                                </p>
                               </div>
-                              <p className="text-xs text-muted-foreground text-center">
-                                This password meets all security requirements. Share it securely with the administrator.
-                              </p>
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
-                              <Button onClick={handleConfirmReset}>Confirm Reset</Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setResetAdmin(null)}>Cancel</Button>
+                                <Button onClick={handleConfirmReset}>Confirm Reset</Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+
+                          {/* Manager-only actions for removing and suspending login profiles */}
+                          {adminProfile.role === 'manager' && (
+                            <>
+                              {/* Suspend / Activate Dialog */}
+                              <AlertDialog open={suspendTarget?.id === admin.id} onOpenChange={(open) => { if (!open) setSuspendTarget(null); }}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={admin.id === adminProfile.uid || isSuspendingAdmin === admin.id}
+                                    className={`h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px] ${admin.status === 'suspended' ? 'text-green-500 hover:bg-green-500/10 hover:text-green-600' : 'text-orange-500 hover:bg-orange-500/10 hover:text-orange-600'}`}
+                                    onClick={() => setSuspendTarget(admin)}
+                                  >
+                                    {isSuspendingAdmin === admin.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : admin.status === 'suspended' ? (
+                                      <>
+                                        <ShieldCheck size={14} />
+                                        <span className="font-medium">Activate</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ShieldOff size={14} />
+                                        <span className="font-medium">Suspend</span>
+                                      </>
+                                    )}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-card">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      {admin.status === 'suspended' ? 'Activate Administrator?' : 'Suspend Administrator?'}
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {admin.status === 'suspended'
+                                        ? `Are you sure you want to reactivate the admin account for ${admin.name}? They will immediately regain system access.`
+                                        : `Are you sure you want to suspend the admin account for ${admin.name}? They will be immediately blocked from signing in or accessing the system.`}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleToggleSuspendAdmin(admin)}
+                                      className={admin.status === 'suspended' ? 'bg-primary hover:bg-primary/90' : 'bg-orange-500 hover:bg-orange-600'}
+                                    >
+                                      Confirm
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+
+                              {/* Remove Dialog */}
+                              <AlertDialog open={deleteTarget?.id === admin.id} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={admin.id === adminProfile.uid || isDeletingAdmin === admin.id}
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive h-auto py-1.5 px-2 flex flex-col items-center gap-1 text-[10px]"
+                                    onClick={() => setDeleteTarget(admin)}
+                                  >
+                                    {isDeletingAdmin === admin.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <>
+                                        <Trash2 size={14} />
+                                        <span className="font-medium">Remove</span>
+                                      </>
+                                    )}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-card border-destructive/20">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-lg text-destructive">Remove Administrator?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-sm leading-relaxed">
+                                      Are you sure you want to permanently delete the administrator profile for <strong>{admin.name}</strong> ({admin.email})? This will delete their authentication credentials and profile data. This action is irreversible.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter className="mt-2">
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteAdmin(admin.id)}
+                                      className="bg-destructive hover:bg-destructive/90 text-white"
+                                    >
+                                      Remove
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </Can>
                   </TableRow>
@@ -832,431 +1091,6 @@ function ProfileSection({ admins, setAdmins, permissions, adminProfile }: { admi
   );
 }
 
-function UserManagementSection({ permissions, adminProfile }: { permissions: string[], adminProfile: AdminProfile }) {
-  const { toast } = useToast();
-  const canManageUsers = hasPermission(permissions, 'manage_users') && adminProfile.role === 'manager';
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
-  const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
-  const [passwordWasGenerated, setPasswordWasGenerated] = useState(false);
-  const { filteredUsers, isLoadingUsers, error: usersError } = useAppUsers(searchTerm);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    setError,
-    clearErrors,
-    watch,
-    formState: { errors, isSubmitting, isValid },
-  } = useForm<AddAppUserFormData>({
-    resolver: zodResolver(addAppUserSchema),
-    mode: 'onChange',
-    defaultValues: {
-      name: '',
-      email: '',
-      phone: '',
-      password: '',
-      confirmPassword: '',
-    },
-  });
-
-  const watchedPassword = watch('password', '');
-  const watchedConfirmPassword = watch('confirmPassword', '');
-  const passwordConditions = checkPasswordStrength(watchedPassword);
-  const passwordMet = passwordConditions.filter(c => c.met).length;
-  const passwordStrength = passwordMet === 5 ? 'strong' : passwordMet >= 3 ? 'medium' : 'weak';
-
-  useEffect(() => {
-    if (!usersError) return;
-
-    console.error('[UserManagement] Firestore subscription failed:', usersError);
-    toast({
-      title: 'Unable to load users',
-      description: 'Mobile app users could not be loaded. Please try again.',
-      variant: 'destructive',
-    });
-  }, [toast, usersError]);
-
-  const resetAddUserDialog = () => {
-    reset();
-    setShowPassword(false);
-    setIsCheckingEmail(false);
-    setPasswordWasGenerated(false);
-  };
-
-  const handleGeneratePassword = () => {
-    const password = generateSecurePassword(12);
-
-    setValue('password', password, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-    setValue('confirmPassword', password, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-    setPasswordWasGenerated(true);
-  };
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({ title: 'Copied!', description: 'Password copied to clipboard.' });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to copy.', variant: 'destructive' });
-    }
-  };
-
-  const roleBadge = (role: AppUser['role']) => {
-    return <Badge className="bg-primary hover:bg-primary/90">{role === 'user' ? 'User' : role}</Badge>;
-  };
-
-  const statusBadge = (status: AppUserStatus) => {
-    return <Badge className="bg-green-600 hover:bg-green-700">{status === 'active' ? 'Active' : status}</Badge>;
-  };
-
-  const formatCreatedAt = (createdAt: AppUser['createdAt']) => {
-    if (!createdAt) return 'Pending';
-    return createdAt.toDate().toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  const onAddUserSubmit = async (data: AddAppUserFormData) => {
-    if (!canManageUsers) {
-      toast({
-        title: 'Permission denied',
-        description: 'Only managers can create mobile app users.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const normalizedEmail = data.email.trim().toLowerCase();
-
-    setIsCheckingEmail(true);
-    try {
-      const exists = await appUserEmailExists(normalizedEmail);
-
-      if (exists) {
-        setError('email', {
-          type: 'manual',
-          message: 'Email already exists.',
-        });
-        toast({
-          title: 'Email already exists.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) {
-        throw new Error('Your admin session expired. Please sign in again.');
-      }
-
-      await createAppUser({ ...data, email: normalizedEmail }, idToken);
-
-      toast({
-        title: 'User Added',
-        description: `${data.name.trim()} can now sign in to the mobile app.`,
-      });
-      if (passwordWasGenerated) {
-        setGeneratedCredentials({
-          email: normalizedEmail,
-          password: data.password,
-        });
-      }
-      setIsAddDialogOpen(false);
-      resetAddUserDialog();
-    } catch (error: any) {
-      const message = error?.message ?? 'User could not be created. Please try again.';
-
-      if (message.toLowerCase().includes('email')) {
-        setError('email', { type: 'manual', message });
-      }
-
-      if (message.toLowerCase().includes('phone')) {
-        setError('phone', { type: 'manual', message });
-      }
-
-      toast({
-        title: message === 'Email already exists.' ? message : 'Add failed',
-        description: message === 'Email already exists.' ? undefined : message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCheckingEmail(false);
-    }
-  };
-
-  const strengthBarClass = passwordStrength === 'strong'
-    ? 'bg-green-500'
-    : passwordStrength === 'medium'
-      ? 'bg-yellow-500'
-      : 'bg-destructive';
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
-        <div>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Users size={20} className="text-primary" /> User Management
-          </CardTitle>
-          <CardDescription>Create and manage mobile application users.</CardDescription>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-            <Input
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9 w-56"
-            />
-          </div>
-          {canManageUsers && (
-            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-              if (!open) resetAddUserDialog();
-              setIsAddDialogOpen(open);
-            }}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 shrink-0">
-                  <Plus size={16} className="mr-2" /> Add User
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-card sm:max-w-lg max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="text-xl font-headline flex items-center gap-2">
-                    <Users size={20} className="text-primary" /> Add User
-                  </DialogTitle>
-                  <DialogDescription>Create credentials for a mobile application user.</DialogDescription>
-                </DialogHeader>
-
-                <form onSubmit={handleSubmit(onAddUserSubmit)} className="space-y-4 py-2" noValidate>
-                  <div className="space-y-1">
-                    <Label htmlFor="app-user-name">Full Name <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="app-user-name"
-                      placeholder="e.g. John Smith"
-                      {...register('name')}
-                      className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
-                    />
-                    {errors.name && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.name.message}</p>}
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="app-user-email">Email <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="app-user-email"
-                      type="email"
-                      placeholder="user@example.com"
-                      {...register('email', {
-                        onChange: () => {
-                          if (errors.email?.type === 'manual') clearErrors('email');
-                        },
-                      })}
-                      className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
-                    />
-                    {errors.email && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.email.message}</p>}
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="app-user-phone">Phone Number <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="app-user-phone"
-                      placeholder="+919876543210"
-                      {...register('phone')}
-                      className={errors.phone ? 'border-destructive focus-visible:ring-destructive' : ''}
-                    />
-                    {errors.phone && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.phone.message}</p>}
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="app-user-password">Password <span className="text-destructive">*</span></Label>
-                      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={handleGeneratePassword}>
-                        <RefreshCcw size={12} className="mr-1" /> Generate
-                      </Button>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        id="app-user-password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Create a strong password"
-                        {...register('password', {
-                          onChange: () => setPasswordWasGenerated(false),
-                        })}
-                        className={`pr-20 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                      />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
-                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => copyToClipboard(watchedPassword)} disabled={!watchedPassword}>
-                          <Copy size={14} />
-                        </Button>
-                      </div>
-                    </div>
-                    {errors.password && <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.password.message}</p>}
-
-                    {watchedPassword.length > 0 && (
-                      <div className="space-y-2 pt-1">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-300 ${strengthBarClass}`}
-                              style={{ width: `${(passwordMet / 5) * 100}%` }}
-                            />
-                          </div>
-                          <span className={`text-xs font-semibold capitalize ${passwordStrength === 'strong' ? 'text-green-500' :
-                            passwordStrength === 'medium' ? 'text-yellow-500' : 'text-destructive'
-                            }`}>
-                            {passwordStrength}
-                          </span>
-                        </div>
-                        <ul className="space-y-1">
-                          {passwordConditions.map(condition => (
-                            <li key={condition.label} className={`flex items-center gap-1.5 text-xs ${condition.met ? 'text-green-500' : 'text-muted-foreground'}`}>
-                              {condition.met ? <CheckCircle2 size={11} /> : <X size={11} />}
-                              {condition.label}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="app-user-confirm-password">Confirm Password <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="app-user-confirm-password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Re-enter password"
-                      {...register('confirmPassword')}
-                      className={errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : ''}
-                    />
-                    {errors.confirmPassword
-                      ? <p className="text-xs text-destructive flex items-center gap-1"><X size={11} />{errors.confirmPassword.message}</p>
-                      : watchedConfirmPassword && watchedConfirmPassword === watchedPassword
-                        ? <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle2 size={11} />Passwords match</p>
-                        : null}
-                  </div>
-
-                  <DialogFooter className="pt-4 gap-2 sticky bottom-0 bg-card pb-1">
-                    <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting || isCheckingEmail}>
-                      <X size={16} className="mr-2" /> Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={!isValid || isSubmitting || isCheckingEmail}
-                      className="bg-primary hover:bg-primary/90 min-w-[130px]"
-                    >
-                      {isCheckingEmail
-                        ? <><Loader2 size={14} className="mr-2 animate-spin" /> Checking...</>
-                        : isSubmitting
-                          ? <><Loader2 size={14} className="mr-2 animate-spin" /> Creating...</>
-                          : <><Users size={16} className="mr-2" /> Create User</>}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
-        </div>
-      </CardHeader>
-
-      <Dialog open={!!generatedCredentials} onOpenChange={(open) => { if (!open) setGeneratedCredentials(null); }}>
-        <DialogContent className="bg-card sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-headline flex items-center gap-2">
-              <Key size={20} className="text-primary" /> Generated Credentials
-            </DialogTitle>
-            <DialogDescription>Share these credentials with the user securely.</DialogDescription>
-          </DialogHeader>
-          {generatedCredentials && (
-            <div className="space-y-4 py-2">
-              <div className="p-4 bg-muted/50 rounded-lg border space-y-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-bold uppercase text-muted-foreground">Email</p>
-                  <p className="font-mono text-sm break-all">{generatedCredentials.email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-bold uppercase text-muted-foreground">Temporary Password</p>
-                  <p className="font-mono text-sm break-all">{generatedCredentials.password}</p>
-                </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button type="button" variant="outline" onClick={() => setGeneratedCredentials(null)}>
-                  Close
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => copyToClipboard(`${generatedCredentials.email}\n${generatedCredentials.password}`)}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Copy size={16} className="mr-2" /> Copy
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoadingUsers ? (
-              Array.from({ length: 5 }).map((_, index) => (
-                <TableRow key={`user-skeleton-${index}`}>
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-44" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                </TableRow>
-              ))
-            ) : filteredUsers.length > 0 ? filteredUsers.map(appUser => (
-              <TableRow key={appUser.id}>
-                <TableCell className="font-medium">{appUser.name}</TableCell>
-                <TableCell className="text-muted-foreground">{appUser.email}</TableCell>
-                <TableCell className="text-muted-foreground">{appUser.phone}</TableCell>
-                <TableCell>{roleBadge(appUser.role)}</TableCell>
-                <TableCell>{statusBadge(appUser.status)}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatCreatedAt(appUser.createdAt)}</TableCell>
-              </TableRow>
-            )) : (
-              <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  {searchTerm
-                    ? `No users found matching "${searchTerm}".`
-                    : 'No mobile app users have been created yet.'}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
 
 // ── ProductSection — Firestore-backed ────────────────────────────────────────
 
