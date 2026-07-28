@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { Upload, X, Star, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { auth } from '@/lib/firebase';
 import type { ProductGalleryImage } from '../types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -83,13 +84,21 @@ export function GalleryUploader({ images, onChange, onUploadingChange }: Gallery
               reader.readAsDataURL(file);
             });
 
+            const idToken = await auth.currentUser?.getIdToken();
+
             const resp = await fetch('/api/upload', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+              },
+              credentials: 'include',
               body: JSON.stringify({ image: dataUrl }),
             });
             const payload = await resp.json();
-            if (!resp.ok || !payload.success) throw new Error(payload.message ?? 'Upload failed');
+            if (!resp.ok || !payload.success) {
+              throw new Error(payload.reason ?? payload.message ?? payload.error ?? 'Upload failed');
+            }
 
             const newImg: ProductGalleryImage = {
               id: entry.id,
