@@ -5,6 +5,7 @@ import { requireAdminAuth } from '@/lib/api-auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { FirestoreProduct, AdminProduct } from '@/app/admin/types';
 import { adminToFirestore } from '@/app/admin/types';
+import { deleteCloudinaryAssets, extractCloudinaryPublicIds } from '@/lib/cloudinary';
 
 function normalizeName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -87,23 +88,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const existingDoc = await adminDb.collection('products').doc(id).get();
     if (existingDoc.exists) {
       const oldData = existingDoc.data() as FirestoreProduct;
-      const oldPublicIds = (oldData.galleryImages ?? []).map(g => g.publicId).filter(Boolean);
-      const newPublicIds = (body.galleryImages ?? []).map((g: any) => g.publicId).filter(Boolean);
+      const oldPublicIds = extractCloudinaryPublicIds(oldData);
+      const newPublicIds = extractCloudinaryPublicIds(body);
       const removedIds = oldPublicIds.filter(pid => !newPublicIds.includes(pid));
 
       if (removedIds.length > 0) {
-        try {
-          const cloudinary = (await import('@/lib/cloudinary')).default;
-          await Promise.all(
-            removedIds.map(publicId =>
-              cloudinary.uploader.destroy(publicId).catch(err =>
-                console.warn(`[API] Cloudinary cleanup failed for ${publicId}:`, err)
-              )
-            )
-          );
-        } catch (cErr) {
-          console.warn('[API] Failed to initialize Cloudinary for cleanup:', cErr);
-        }
+        await deleteCloudinaryAssets(removedIds);
       }
     }
 
@@ -127,33 +117,27 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   const { error } = await requireAdminAuth(request as any, ['manager']);
   if (error) return error;
+
+  console.log(`Deleting product: ${id}`);
+
   try {
     const docRef = adminDb.collection('products').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     const data = doc.data() as FirestoreProduct;
 
-    // ── Delete every Cloudinary asset ─────────────────────────────────────────
-    const cloudinary = (await import('@/lib/cloudinary')).default;
+    // Retrieve and collect every Cloudinary public ID associated with the product
+    const publicIds = extractCloudinaryPublicIds(data);
 
-    const galleryAssets: string[] = (data.galleryImages ?? [])
-      .map((g: any) => g.publicId)
-      .filter(Boolean);
+    // Delete images from Cloudinary concurrently
+    await deleteCloudinaryAssets(publicIds);
 
-    const legacyId = data.imagePublicId;
-    if (legacyId && !galleryAssets.includes(legacyId)) galleryAssets.push(legacyId);
-
-    if (galleryAssets.length > 0) {
-      await Promise.all(
-        galleryAssets.map(publicId =>
-          cloudinary.uploader.destroy(publicId).catch(err =>
-            console.warn(`[API] Cloudinary cleanup failed for ${publicId}:`, err)
-          )
-        )
-      );
-    }
-
+    // Delete database record
+    console.log('Deleting database record');
     await docRef.delete();
+
+    console.log('Product deleted successfully');
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('[API] DELETE /api/products/:id failed:', err.message);
