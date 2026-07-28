@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle } from 'lucide-react';
 
+import { auth } from '@/lib/firebase';
+
 export interface ImageUploadResult {
   url: string;
   publicId: string;
@@ -55,17 +57,24 @@ export function ImageUploader({ value, onChange, onRemove, error }: ImageUploade
         reader.readAsDataURL(file);
       });
 
+      // Fetch Firebase ID Token for authentication
+      const idToken = await auth.currentUser?.getIdToken();
+
       // Upload to Cloudinary via our backend route
       const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        credentials: 'include',
         body: JSON.stringify({ image: dataUrl }),
       });
 
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.message ?? 'Upload failed. Please try again.');
+        throw new Error(payload.reason ?? payload.message ?? payload.error ?? 'Upload failed. Please try again.');
       }
 
       onChange({ url: payload.imageUrl, publicId: payload.publicId });
